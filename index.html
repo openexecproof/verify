@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>GUBAZ Verify</title>
+<style>
+body {
+    font-family: Arial, sans-serif;
+    margin: 40px;
+}
+#result {
+    margin-top: 20px;
+    font-size: 22px;
+    font-weight: bold;
+}
+.valid {
+    color: green;
+}
+.invalid {
+    color: red;
+}
+</style>
+</head>
+
+<body>
+
+<h1>GUBAZ Proof Verification</h1>
+
+<div id="result">Waiting for proof...</div>
+
+<script>
+
+function verifyProof() {
+
+    const payload = window.location.hash.substring(1);
+
+    if (!payload) {
+        document.getElementById("result").innerText = "No proof provided.";
+        return;
+    }
+
+    try {
+
+        const decoded = atob(payload);
+        const json = JSON.parse(decoded);
+
+        document.getElementById("result").innerHTML =
+            "<span class='valid'>VALID PROOF</span>";
+
+        console.log("Decoded proof:", json);
+
+    } catch (e) {
+
+        document.getElementById("result").innerHTML =
+            "<span class='invalid'>INVALID PROOF</span>";
+
+        console.error(e);
+    }
+
+}
+
+verifyProof();
+
+</script>
+
+</body>
+</html>
