@@ -3,248 +3,127 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GUBAZ | Verification Trophy</title>
+    <title>GUBAZ | R1 Protocol Verifier</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Outfit', sans-serif; }
-        .mono { font-family: 'JetBrains+Mono', monospace; }
-        .glass { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(10px); }
-        .trophy-border { border: 1px solid rgba(255, 255, 255, 0.1); }
-        .success-glow { box-shadow: 0 0 50px -10px rgba(16, 185, 129, 0.2); }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        .glass { background: rgba(255,255,255,0.03); backdrop-filter: blur(10px); }
+        .trophy-border { border: 1px solid rgba(255,255,255,0.1); }
+        .success-glow { box-shadow: 0 0 50px -10px rgba(16,185,129,0.2); }
+        .fail-glow { box-shadow: 0 0 50px -10px rgba(239,68,68,0.2); }
     </style>
 </head>
-<body class="bg-zinc-950 text-zinc-300 min-h-screen flex flex-col items-center justify-center p-6 selection:bg-emerald-500/30">
-
-    <main class="max-w-2xl w-full space-y-12 py-12">
-        
-        <!-- Trophy Head -->
-        <header class="text-center space-y-4">
-            <h1 class="text-white text-5xl font-bold tracking-tighter">GUBAZ</h1>
-            <p class="text-zinc-500 text-sm uppercase tracking-[0.3em]">Execution Proof Ritual</p>
-        </header>
-
-        <!-- Main Trophy Card -->
-        <div id="trophy-card" class="glass trophy-border rounded-3xl p-8 md:p-12 space-y-8 relative overflow-hidden transition-all duration-500">
-             <div id="status-indicator" class="flex flex-col items-center text-center space-y-4">
-                 <div id="badge-icon" class="w-16 h-16 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center">
-                     <div class="w-6 h-6 rounded-full bg-zinc-700 animate-pulse"></div>
-                 </div>
-                 <div class="space-y-1">
-                     <h2 id="status-text" class="text-2xl font-bold text-white tracking-tight">Verifying...</h2>
-                     <p id="trust-statement" class="text-zinc-500 text-sm italic">Initializing browser verification</p>
-                 </div>
-             </div>
-
-             <!-- Details Flat List -->
-             <div id="facts-layer" class="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6 pt-6 border-t border-zinc-900 opacity-0 transition-opacity duration-300">
-                 <div class="space-y-1">
-                     <label class="text-[10px] text-zinc-600 uppercase font-bold tracking-widest">Command</label>
-                     <p id="fact-command" class="text-zinc-200 mono text-sm truncate">---</p>
-                 </div>
-                 <div class="space-y-1">
-                     <label class="text-[10px] text-zinc-600 uppercase font-bold tracking-widest">Outcome</label>
-                     <p id="fact-status" class="text-zinc-200 text-sm font-bold">---</p>
-                 </div>
-                 <div class="space-y-1">
-                     <label class="text-[10px] text-zinc-600 uppercase font-bold tracking-widest">Duration</label>
-                     <p id="fact-duration" class="text-zinc-200 text-sm">---</p>
-                 </div>
-                 <div class="space-y-1">
-                     <label class="text-[10px] text-zinc-600 uppercase font-bold tracking-widest">Proof ID</label>
-                     <p id="fact-id" class="text-zinc-500 mono text-[10px] truncate">---</p>
-                 </div>
-             </div>
+<body class="bg-zinc-950 text-zinc-300 min-h-screen flex flex-col items-center p-6">
+<main class="max-w-2xl w-full space-y-8 py-12">
+    <header class="text-center space-y-2">
+        <h1 class="text-white text-4xl font-bold tracking-tighter">GUBAZ R1</h1>
+        <p class="text-zinc-500 text-sm uppercase tracking-[0.3em]">Portable Execution Proof</p>
+    </header>
+    <div id="truncation-advisory" class="hidden bg-amber-500/10 border border-amber-500/20 p-4 rounded-xl text-amber-500 text-xs">
+        <strong>Advisory:</strong> Proof payload appears short — may be truncated.
+    </div>
+    <div id="status-card" class="glass trophy-border rounded-3xl p-8 space-y-8 transition-all duration-500">
+        <div class="flex flex-col items-center text-center space-y-4">
+            <div id="status-icon" class="w-16 h-16 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center">
+                <div class="w-6 h-6 rounded-full bg-zinc-700 animate-pulse"></div>
+            </div>
+            <div class="space-y-1">
+                <h2 id="status-text" class="text-2xl font-bold text-white tracking-tight">Verifying...</h2>
+                <p id="status-desc" class="text-zinc-500 text-sm italic">Initializing browser verification</p>
+            </div>
         </div>
-
-        <!-- Share & Ritual Statements -->
-        <section class="space-y-8 text-center">
-            <div class="space-y-2">
-                <p class="text-xl text-white font-medium">Don’t send screenshots. Send proof.</p>
-                <div class="flex items-center justify-center gap-4 text-xs text-zinc-500 uppercase tracking-widest">
-                    <span>Verified in your browser</span>
-                    <span class="w-1 h-1 rounded-full bg-zinc-800"></span>
-                    <span>No server required</span>
+        <div id="details-section" class="hidden space-y-6 pt-6 border-t border-zinc-900">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="space-y-1">
+                    <label class="text-[10px] text-zinc-600 uppercase font-bold tracking-widest">Command</label>
+                    <p id="detail-command" class="text-zinc-200 mono text-sm break-all">---</p>
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] text-zinc-600 uppercase font-bold tracking-widest">Exit Status</label>
+                    <p id="detail-exit" class="text-zinc-200 text-sm font-bold">---</p>
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] text-zinc-600 uppercase font-bold tracking-widest">Execution ID</label>
+                    <p id="detail-hash" class="text-zinc-500 mono text-[10px] truncate">---</p>
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] text-zinc-600 uppercase font-bold tracking-widest">Signer</label>
+                    <p id="detail-signer" class="text-zinc-500 mono text-[10px] truncate">---</p>
                 </div>
             </div>
+        </div>
+    </div>
+</main>
+<script src="verifier-browser.js"></script>
+<script>
+async function init() {
+    const payload = window.location.hash.slice(1);
+    
+    // RESET UI
+    document.getElementById('truncation-advisory').classList.add('hidden');
+    document.getElementById('status-card').classList.remove('success-glow', 'fail-glow');
+    document.getElementById('status-text').className = "text-2xl font-bold text-white tracking-tight";
+    document.getElementById('details-section').classList.add('hidden');
 
-            <!-- CTA Section -->
-            <div class="bg-zinc-900/50 border border-zinc-800 p-8 rounded-2xl inline-block w-full max-w-md space-y-6">
-                <h3 class="text-white font-bold">Create your own proof</h3>
-                <div class="space-y-3">
-                    <div class="bg-black p-3 rounded-lg mono text-xs text-emerald-400 border border-zinc-800 relative group">
-                        <code>pip install gubaz</code>
-                        <button onclick="copyRaw('pip install gubaz', this)" class="absolute right-3 opacity-0 group-hover:opacity-100 transition-opacity">copy</button>
-                    </div>
-                    <div class="bg-black p-3 rounded-lg mono text-xs text-zinc-400 border border-zinc-800 relative group">
-                        <code>gubaz run pytest -q</code>
-                        <button onclick="copyRaw('gubaz run pytest -q', this)" class="absolute right-3 opacity-0 group-hover:opacity-100 transition-opacity">copy</button>
-                    </div>
-                </div>
-            </div>
+    if (!payload) { 
+        renderNeutral(); 
+        return; 
+    }
 
-            <!-- Share Links -->
-            <div id="share-block" class="flex flex-wrap items-center justify-center gap-3 pt-4 hidden">
-                <button onclick="copyFormat('slack')" class="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-full text-xs text-zinc-400 hover:text-white transition-all">Copy for Slack</button>
-                <button onclick="copyFormat('github')" class="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-full text-xs text-zinc-400 hover:text-white transition-all">Copy for GitHub</button>
-                <button onclick="copyFormat('url')" class="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-full text-xs text-zinc-400 hover:text-white transition-all">Copy URL</button>
-            </div>
-        </section>
+    if (payload.length < 200) {
+        document.getElementById('truncation-advisory').classList.remove('hidden');
+    }
 
-    </main>
+    document.getElementById('status-text').innerText = "Verifying...";
+    document.getElementById('status-desc').innerText = "Processing proof fragment";
 
-    <script src="verifier-oep01.js?v=3"></script>
-    <script>
-        let currentReceipt = null;
-        let currentKind = null;
-        let currentUrl = window.location.href;
-
-        async function hydrate() {
-            const hash = window.location.hash.slice(1);
-            if (!hash) {
-                renderState('missing');
-                return;
-            }
-
-            try {
-                // Step 1: Strict Base64 validation and decode
-                const bytes = decodeBase64Strict(hash);
-                const rawData = new TextDecoder().decode(bytes);
-                
-                // Step 2: Parse envelope (to check if minified)
-                let envelope;
-                try {
-                    envelope = JSON.parse(rawData);
-                } catch (e) {
-                    renderState('error', { reason: 'invalid_json' });
-                    return;
-                }
-                
-                let dataToVerify = bytes;
-                let isMinified = false;
-
-                // Rule: Support minified envelope and reconstruct canonical receipt for verification
-                if (envelope.v === 1 && envelope.c) {
-                    isMinified = true;
-                    currentKind = envelope.k === 's' ? 'seal' : 'run';
-                    
-                    const core = {
-                        "command": envelope.c,
-                        "exit_code": envelope.x,
-                        "stdout_digest": envelope.o.includes(':') ? envelope.o : `sha256:${envelope.o}`,
-                        "stderr_digest": envelope.e.includes(':') ? envelope.e : `sha256:${envelope.e}`
-                    };
-                    
-                    currentReceipt = {
-                        "source": envelope.s,
-                        "protocol_version": envelope.p,
-                        "receipt_core": core,
-                        "receipt_meta": {} 
-                    };
-                    
-                    // For minified, we verify the reconstructed receipt
-                    const reconstructedStr = JSON.stringify(currentReceipt);
-                    dataToVerify = new TextEncoder().encode(reconstructedStr);
-                } else {
-                    // Verbose format 
-                    currentReceipt = envelope.receipt || envelope; // Handle envelope wrapped or direct
-                    currentKind = envelope.kind || 'run';
-                }
-
-                // Step 3: Call the canonical verifier
-                const result = await verifyOEP01(dataToVerify);
-                
-                if (result.status === 'ACCEPT') {
-                    renderState('success', { proofId: result.proof_id });
-                } else {
-                    renderState('error', { reason: result.reason_code });
-                }
-            } catch (e) {
-                console.error("Hydration error:", e);
-                renderState('error', { reason: e.reasonCode || 'verification_error' });
-            }
+    try {
+        const json = decodeFragment('#' + payload);
+        const result = await verifyProof(json);
+        if (result.decision === 'VALID') {
+            renderSuccess(result.proof, result);
+        } else {
+            renderFail(result.message || result.failure_class);
         }
+    } catch(e) {
+        renderFail(e.message || String(e));
+    }
+}
 
-        function renderState(state, data = {}) {
-            const card = document.getElementById('trophy-card');
-            const icon = document.getElementById('badge-icon');
-            const statusText = document.getElementById('status-text');
-            const trustText = document.getElementById('trust-statement');
-            const factsLayer = document.getElementById('facts-layer');
-            const shareBlock = document.getElementById('share-block');
+function renderNeutral() {
+    document.getElementById('status-text').innerText = "No Proof Provided";
+    document.getElementById('status-desc').innerText = "Provide a proof payload in the URL fragment";
+    document.getElementById('status-icon').innerHTML = '<div class="w-6 h-6 rounded-full bg-zinc-700"></div>';
+}
 
-            // Reset classes
-            card.classList.remove('success-glow', 'border-emerald-500/20', 'border-red-500/20');
-            icon.classList.remove('border-emerald-500/30', 'bg-emerald-500/10', 'border-red-500/30', 'bg-red-500/10');
+function renderSuccess(proof, verdict) {
+    const card = document.getElementById('status-card');
+    card.classList.add('success-glow');
+    document.getElementById('status-icon').innerHTML = '<svg class="w-8 h-8 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>';
+    document.getElementById('status-text').innerText = "Verified Proof";
+    document.getElementById('status-text').className = "text-2xl font-bold text-emerald-500 tracking-tight";
+    document.getElementById('status-desc').innerText = "Signature valid. Identity matches.";
+    document.getElementById('details-section').classList.remove('hidden');
+    const core = proof.execution_core;
+    document.getElementById('detail-command').innerText = core.command;
+    document.getElementById('detail-exit').innerText = core.exit_code === 0 ? "Success (0)" : "Failed (" + core.exit_code + ")";
+    document.getElementById('detail-hash').innerText = proof.execution_id;
+    document.getElementById('detail-signer').innerText = proof.signer.key_id;
+}
 
-            if (state === 'success') {
-                card.classList.add('success-glow', 'border-emerald-500/20');
-                icon.innerHTML = '<svg class="w-8 h-8 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>';
-                icon.classList.add('border-emerald-500/30', 'bg-emerald-500/10');
-                statusText.innerText = 'Verified';
-                trustText.innerText = 'Verification succeeded in your browser';
-                factsLayer.classList.remove('opacity-0');
-                shareBlock.classList.remove('hidden');
+function renderFail(reason) {
+    const card = document.getElementById('status-card');
+    card.classList.add('fail-glow');
+    document.getElementById('status-icon').innerHTML = '<svg class="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>';
+    document.getElementById('status-text').innerText = "Invalid Proof";
+    document.getElementById('status-text').className = "text-2xl font-bold text-red-500 tracking-tight";
+    document.getElementById('status-desc').innerText = "Verification failed: " + (reason || "unknown").replace(/_/g,' ');
+}
 
-                const r = currentReceipt;
-                const cmd = r.receipt_core.command || (currentKind === 'seal' ? ['stdin'] : ['unknown']);
-                document.getElementById('fact-command').innerText = Array.isArray(cmd) ? cmd.join(' ') : cmd;
-                
-                const exitCode = r.receipt_core.exit_code;
-                const exitText = (exitCode === 0) ? 'Success' : `Failed (exit ${exitCode})`;
-                document.getElementById('fact-status').innerText = exitText;
-                document.getElementById('fact-status').className = `text-sm font-bold ${exitCode === 0 ? 'text-emerald-400' : 'text-red-400'}`;
-                
-                document.getElementById('fact-duration').innerText = r.receipt_meta?.duration_ms ? `${(r.receipt_meta.duration_ms/1000).toFixed(2)}s` : 'N/A';
-                document.getElementById('fact-id').innerText = data.proofId;
-            } else if (state === 'error' || state === 'missing') {
-                card.classList.add('border-red-500/20');
-                icon.innerHTML = '<svg class="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>';
-                icon.classList.add('border-red-500/30', 'bg-red-500/10');
-                statusText.innerText = state === 'missing' ? 'No Proof Provided' : 'Invalid Proof';
-                
-                let detailedMessage = 'The proof payload is corrupt or invalid';
-                if (data.reason) {
-                    detailedMessage = `Verification failed: ${data.reason.replace(/_/g, ' ')}`;
-                }
-                trustText.innerText = state === 'missing' ? 'Please provide a proof payload in the URL fragment' : detailedMessage;
-                factsLayer.classList.add('opacity-0');
-                shareBlock.classList.add('hidden');
-            }
-        }
-
-        const templates = {
-            slack: (r, url) => {
-                const cmd = Array.isArray(r.receipt_core.command) ? r.receipt_core.command.join(' ') : r.receipt_core.command;
-                const status = r.receipt_core.exit_code === 0 ? 'Success' : 'Failed';
-                return `GUBAZ proof → ${status}: ${cmd}\n${url}`;
-            },
-            github: (r, url) => {
-                const cmd = Array.isArray(r.receipt_core.command) ? r.receipt_core.command.join(' ') : r.receipt_core.command;
-                return `[GUBAZ Proof](${url}) for \`${cmd}\``;
-            }
-        };
-
-        function copyFormat(format) {
-            let text = "";
-            if (format === 'url') text = currentUrl;
-            else if (format === 'slack') text = templates.slack(currentReceipt, currentUrl);
-            else if (format === 'github') text = templates.github(currentReceipt, currentUrl);
-            navigator.clipboard.writeText(text);
-            alert('Copied to clipboard');
-        }
-
-        function copyRaw(text, el) {
-            navigator.clipboard.writeText(text);
-            const original = el.innerText;
-            el.innerText = 'copied!';
-            setTimeout(() => el.innerText = original, 2000);
-        }
-
-        window.onload = hydrate;
-        window.onhashchange = hydrate;
-    </script>
+window.onload = init;
+window.onhashchange = init;
+</script>
 </body>
 </html>
