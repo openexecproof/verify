@@ -1,104 +1,186 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GUBAZ | R1 Protocol Verifier</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-    <style>
-        body { font-family: 'Outfit', sans-serif; }
-        .mono { font-family: 'JetBrains Mono', monospace; }
-        .glass { background: rgba(255,255,255,0.03); backdrop-filter: blur(10px); }
-        .trophy-border { border: 1px solid rgba(255,255,255,0.1); }
-        .success-glow { box-shadow: 0 0 50px -10px rgba(16,185,129,0.2); }
-        .fail-glow { box-shadow: 0 0 50px -10px rgba(239,68,68,0.2); }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>OEP-1 Verifier</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+<style>
+body{font-family:'Outfit',sans-serif}
+.mono{font-family:'JetBrains Mono',monospace}
+.glass{background:rgba(255,255,255,0.03);backdrop-filter:blur(10px)}
+.trophy-border{border:1px solid rgba(255,255,255,0.1)}
+.success-glow{box-shadow:0 0 50px -10px rgba(16,185,129,0.2)}
+.fail-glow{box-shadow:0 0 50px -10px rgba(239,68,68,0.2)}
+</style>
 </head>
+
 <body class="bg-zinc-950 text-zinc-300 min-h-screen flex flex-col items-center p-6">
+
 <main class="max-w-2xl w-full space-y-8 py-12">
-    <header class="text-center space-y-2">
-        <h1 class="text-white text-4xl font-bold tracking-tighter">GUBAZ R1</h1>
-        <p class="text-zinc-500 text-sm uppercase tracking-[0.3em]">Portable Execution Proof</p>
-    </header>
-    <div id="truncation-advisory" class="hidden bg-amber-500/10 border border-amber-500/20 p-4 rounded-xl text-amber-500 text-xs">
-        <strong>Advisory:</strong> Proof payload appears short — may be truncated.
-    </div>
-    <div id="status-card" class="glass trophy-border rounded-3xl p-8 space-y-8 transition-all duration-500">
-        <div class="flex flex-col items-center text-center space-y-4">
-            <div id="status-icon" class="w-16 h-16 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center">
-                <div class="w-6 h-6 rounded-full bg-zinc-700 animate-pulse"></div>
-            </div>
-            <div class="space-y-1">
-                <h2 id="status-text" class="text-2xl font-bold text-white tracking-tight">Verifying...</h2>
-                <p id="status-desc" class="text-zinc-500 text-sm italic">Initializing browser verification</p>
-            </div>
-        </div>
-        <div id="details-section" class="hidden space-y-6 pt-6 border-t border-zinc-900">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div class="space-y-1">
-                    <label class="text-[10px] text-zinc-600 uppercase font-bold tracking-widest">Command</label>
-                    <p id="detail-command" class="text-zinc-200 mono text-sm break-all">---</p>
-                </div>
-                <div class="space-y-1">
-                    <label class="text-[10px] text-zinc-600 uppercase font-bold tracking-widest">Exit Status</label>
-                    <p id="detail-exit" class="text-zinc-200 text-sm font-bold">---</p>
-                </div>
-                <div class="space-y-1">
-                    <label class="text-[10px] text-zinc-600 uppercase font-bold tracking-widest">Execution ID</label>
-                    <p id="detail-hash" class="text-zinc-500 mono text-[10px] truncate">---</p>
-                </div>
-                <div class="space-y-1">
-                    <label class="text-[10px] text-zinc-600 uppercase font-bold tracking-widest">Signer</label>
-                    <p id="detail-signer" class="text-zinc-500 mono text-[10px] truncate">---</p>
-                </div>
-            </div>
-        </div>
-    </div>
+
+<header class="text-center space-y-2">
+<h1 class="text-white text-4xl font-bold tracking-tighter">
+OEP-1 Verifier
+</h1>
+
+<p class="text-zinc-500 text-sm uppercase tracking-[0.3em]">
+Portable Execution Proof
+</p>
+
+<p class="text-zinc-600 text-xs">
+Open Execution Proof
+</p>
+
+</header>
+
+<div id="truncation-advisory"
+class="hidden bg-amber-500/10 border border-amber-500/20 p-4 rounded-xl text-amber-500 text-xs">
+<strong>Advisory:</strong> Proof payload appears short — may be truncated.
+</div>
+
+<div id="status-card"
+class="glass trophy-border rounded-3xl p-8 space-y-8 transition-all duration-500">
+
+<div class="flex flex-col items-center text-center space-y-4">
+
+<div id="status-icon"
+class="w-16 h-16 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center">
+<div class="w-6 h-6 rounded-full bg-zinc-700 animate-pulse"></div>
+</div>
+
+<div class="space-y-1">
+<h2 id="status-text"
+class="text-2xl font-bold text-white tracking-tight">
+Verifying...
+</h2>
+
+<p id="status-desc"
+class="text-zinc-500 text-sm italic">
+Initializing browser verification
+</p>
+</div>
+
+</div>
+
+<div id="details-section"
+class="hidden space-y-6 pt-6 border-t border-zinc-900">
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+<div class="space-y-1">
+<label class="text-[10px] text-zinc-600 uppercase font-bold tracking-widest">
+Command
+</label>
+<p id="detail-command"
+class="text-zinc-200 mono text-sm break-all">
+---
+</p>
+</div>
+
+<div class="space-y-1">
+<label class="text-[10px] text-zinc-600 uppercase font-bold tracking-widest">
+Exit Status
+</label>
+<p id="detail-exit"
+class="text-zinc-200 text-sm font-bold">
+---
+</p>
+</div>
+
+<div class="space-y-1">
+<label class="text-[10px] text-zinc-600 uppercase font-bold tracking-widest">
+Execution ID
+</label>
+<p id="detail-hash"
+class="text-zinc-500 mono text-[10px] truncate">
+---
+</p>
+</div>
+
+<div class="space-y-1">
+<label class="text-[10px] text-zinc-600 uppercase font-bold tracking-widest">
+Signer
+</label>
+<p id="detail-signer"
+class="text-zinc-500 mono text-[10px] truncate">
+---
+</p>
+</div>
+
+</div>
+</div>
+</div>
+
+<footer class="text-center text-xs text-zinc-600">
+Verifier: https://openexecproof.github.io/verify/
+</footer>
+
 </main>
+
 <script src="verifier-browser.js"></script>
+
 <script>
-function resetUI() {
-    document.getElementById('truncation-advisory').classList.add('hidden');
-    document.getElementById('status-card').classList.remove('success-glow', 'fail-glow');
-    document.getElementById('status-text').className = "text-2xl font-bold text-white tracking-tight";
-    document.getElementById('details-section').classList.add('hidden');
-    document.getElementById('status-text').innerText = "Verifying...";
-    document.getElementById('status-desc').innerText = "Processing proof";
+
+function resetUI(){
+document.getElementById('truncation-advisory').classList.add('hidden')
+document.getElementById('status-card').classList.remove('success-glow','fail-glow')
+document.getElementById('status-text').className="text-2xl font-bold text-white tracking-tight"
+document.getElementById('details-section').classList.add('hidden')
+document.getElementById('status-text').innerText="Verifying..."
+document.getElementById('status-desc').innerText="Processing proof"
 }
 
-function renderNeutral() {
-    document.getElementById('status-text').innerText = "No Proof Provided";
-    document.getElementById('status-desc').innerText = "Provide a proof payload in the URL fragment or use ?id=<execution_id>";
-    document.getElementById('status-icon').innerHTML = '<div class="w-6 h-6 rounded-full bg-zinc-700"></div>';
+function renderNeutral(){
+document.getElementById('status-text').innerText="No Proof Provided"
+document.getElementById('status-desc').innerText="Provide a proof payload in the URL fragment or use ?id=<execution_id>"
+document.getElementById('status-icon').innerHTML='<div class="w-6 h-6 rounded-full bg-zinc-700"></div>'
 }
 
-function renderSuccess(proof, verdict) {
-    const card = document.getElementById('status-card');
-    card.classList.add('success-glow');
-    document.getElementById('status-icon').innerHTML = '<svg class="w-8 h-8 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>';
-    document.getElementById('status-text').innerText = "Verified Proof";
-    document.getElementById('status-text').className = "text-2xl font-bold text-emerald-500 tracking-tight";
-    document.getElementById('status-desc').innerText = "Signature valid. Identity matches.";
-    document.getElementById('details-section').classList.remove('hidden');
-    const core = proof.execution_core;
-    document.getElementById('detail-command').innerText = core.command;
-    document.getElementById('detail-exit').innerText = core.exit_code === 0 ? "Success (0)" : "Failed (" + core.exit_code + ")";
-    document.getElementById('detail-hash').innerText = proof.execution_id;
-    document.getElementById('detail-signer').innerText = proof.signer.key_id;
+function renderSuccess(proof,verdict){
+
+const card=document.getElementById('status-card')
+card.classList.add('success-glow')
+
+document.getElementById('status-icon').innerHTML=
+'<svg class="w-8 h-8 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>'
+
+document.getElementById('status-text').innerText="Verified Proof"
+document.getElementById('status-text').className="text-2xl font-bold text-emerald-500 tracking-tight"
+document.getElementById('status-desc').innerText="Signature valid. Identity matches."
+
+document.getElementById('details-section').classList.remove('hidden')
+
+const core=proof.execution_core
+
+document.getElementById('detail-command').innerText=core.command
+document.getElementById('detail-exit').innerText=core.exit_code===0?"Success (0)":"Failed ("+core.exit_code+")"
+document.getElementById('detail-hash').innerText=proof.execution_id
+document.getElementById('detail-signer').innerText=proof.signer.key_id
 }
 
-function renderFail(reason) {
-    const card = document.getElementById('status-card');
-    card.classList.add('fail-glow');
-    document.getElementById('status-icon').innerHTML = '<svg class="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>';
-    document.getElementById('status-text').innerText = "Invalid Proof";
-    document.getElementById('status-text').className = "text-2xl font-bold text-red-500 tracking-tight";
-    document.getElementById('status-desc').innerText = "Verification failed: " + (reason || "unknown").replace(/_/g,' ');
+function renderFail(reason){
+
+const card=document.getElementById('status-card')
+card.classList.add('fail-glow')
+
+document.getElementById('status-icon').innerHTML=
+'<svg class="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>'
+
+document.getElementById('status-text').innerText="Invalid Proof"
+document.getElementById('status-text').className="text-2xl font-bold text-red-500 tracking-tight"
+document.getElementById('status-desc').innerText="Verification failed: "+(reason||"unknown").replace(/_/g,' ')
 }
 
-window.onload = boot;
-window.onhashchange = boot;
+window.onload=boot
+window.onhashchange=boot
+
 </script>
+
 </body>
 </html>
