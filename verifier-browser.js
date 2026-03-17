@@ -149,3 +149,54 @@ async function verifyProof(json) {
     return { decision: "VALID", failure_class: null, proof: proof, execution_id: recomputedId };
 }
 
+async function boot() {
+    const hash = window.location.hash.slice(1);
+
+    if (hash) {
+        try {
+            if (typeof resetUI === 'function') resetUI();
+            const json = decodeFragment('#' + hash);
+            const result = await verifyProof(json);
+            if (result.decision === 'VALID') {
+                renderSuccess(result.proof, result);
+            } else {
+                renderFail(result.message || result.failure_class);
+            }
+            return;
+        } catch (e) {
+            if (typeof renderFail === 'function') renderFail(e.message || String(e));
+            return;
+        }
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('id');
+
+    if (id) {
+        try {
+            if (typeof resetUI === 'function') resetUI();
+            if (!/^[a-f0-9]{64}$/.test(id)) {
+                throw new Error('Invalid proof id');
+            }
+
+            const proofUrl = `p/${id}.json`;
+            const resp = await fetch(proofUrl);
+            if (!resp.ok) throw new Error('Proof not found');
+
+            const json = await resp.text();
+            const result = await verifyProof(json);
+            if (result.decision === 'VALID') {
+                renderSuccess(result.proof, result);
+            } else {
+                renderFail(result.message || result.failure_class);
+            }
+            return;
+        } catch (e) {
+            if (typeof renderFail === 'function') renderFail(e.message || String(e));
+            return;
+        }
+    }
+
+    if (typeof renderNeutral === 'function') renderNeutral();
+}
+

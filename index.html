@@ -58,43 +58,18 @@
 </main>
 <script src="verifier-browser.js"></script>
 <script>
-async function init() {
-    const payload = window.location.hash.slice(1);
-    
-    // RESET UI
+function resetUI() {
     document.getElementById('truncation-advisory').classList.add('hidden');
     document.getElementById('status-card').classList.remove('success-glow', 'fail-glow');
     document.getElementById('status-text').className = "text-2xl font-bold text-white tracking-tight";
     document.getElementById('details-section').classList.add('hidden');
-
-    if (!payload) { 
-        renderNeutral(); 
-        return; 
-    }
-
-    if (payload.length < 200) {
-        document.getElementById('truncation-advisory').classList.remove('hidden');
-    }
-
     document.getElementById('status-text').innerText = "Verifying...";
-    document.getElementById('status-desc').innerText = "Processing proof fragment";
-
-    try {
-        const json = decodeFragment('#' + payload);
-        const result = await verifyProof(json);
-        if (result.decision === 'VALID') {
-            renderSuccess(result.proof, result);
-        } else {
-            renderFail(result.message || result.failure_class);
-        }
-    } catch(e) {
-        renderFail(e.message || String(e));
-    }
+    document.getElementById('status-desc').innerText = "Processing proof";
 }
 
 function renderNeutral() {
     document.getElementById('status-text').innerText = "No Proof Provided";
-    document.getElementById('status-desc').innerText = "Provide a proof payload in the URL fragment";
+    document.getElementById('status-desc').innerText = "Provide a proof payload in the URL fragment or use ?id=<execution_id>";
     document.getElementById('status-icon').innerHTML = '<div class="w-6 h-6 rounded-full bg-zinc-700"></div>';
 }
 
@@ -122,8 +97,8 @@ function renderFail(reason) {
     document.getElementById('status-desc').innerText = "Verification failed: " + (reason || "unknown").replace(/_/g,' ');
 }
 
-window.onload = init;
-window.onhashchange = init;
+window.onload = boot;
+window.onhashchange = boot;
 </script>
 </body>
 </html>
