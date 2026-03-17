@@ -4,9 +4,9 @@ Public browser verifier for **Open Execution Proof (OEP-1)** execution proofs.
 
 The verifier independently validates:
 
-- execution identity
-- proof structure
-- Ed25519 signature
+- execution identity  
+- proof structure  
+- Ed25519 signature  
 
 ---
 
@@ -29,12 +29,15 @@ If the execution identity changes, the signature becomes invalid.
 Two transport modes are supported.
 
 ### Fragment transport
+https://openexecproof.github.io/verify/#
+<proof_fragment>
 
-https://openexecproof.github.io/verify/#<proof_fragment>
 
 ### Hosted proof transport
 
-https://openexecproof.github.io/verify/?id=<execution_id>
+
+https://openexecproof.github.io/verify/?id=
+<execution_id>
 
 Both modes pass through the same canonical validation corridor.
 
@@ -43,3 +46,17 @@ Both modes pass through the same canonical validation corridor.
 ## Example Proof
 
 https://openexecproof.github.io/verify/?id=5a6c7a254d5cc40cf0a5ff7394fb1801dd989ce63e32044a5fd2c4674ebdeba7
+
+---
+
+## Repository Structure
+index.html
+verifier-browser.js
+p/
+
+
+---
+
+## License
+
+MIT
