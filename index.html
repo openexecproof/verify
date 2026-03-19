@@ -33,16 +33,15 @@
             </div>
         </div>
 
-        <!-- RESOLUTION SOURCE SECTION -->
         <div id="source-section" class="hidden space-y-3 pt-6 border-t border-zinc-900">
-             <div class="flex items-center justify-between">
+            <div class="flex items-center justify-between">
                 <label class="text-[10px] text-zinc-600 uppercase font-bold tracking-widest">Resolution Source</label>
                 <span id="source-tier" class="text-[9px] bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-full uppercase">Tier -</span>
-             </div>
-             <div class="p-3 bg-zinc-900/50 rounded-xl border border-zinc-800/50">
+            </div>
+            <div class="p-3 bg-zinc-900/50 rounded-xl border border-zinc-800/50">
                 <p id="source-descriptor" class="text-white text-xs font-bold mb-1">---</p>
                 <p id="source-origin" class="text-zinc-500 mono text-[10px] truncate">---</p>
-             </div>
+            </div>
         </div>
 
         <div id="details-section" class="hidden space-y-6 pt-6 border-t border-zinc-900">
@@ -66,7 +65,6 @@
             </div>
         </div>
 
-        <!-- MANUAL IMPORT UI -->
         <div id="manual-import-ui" class="hidden space-y-4 pt-6 border-t border-zinc-900">
             <textarea id="manual-paste" placeholder="Paste proof JSON here..." class="w-full h-32 bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs mono text-zinc-400 focus:outline-none focus:border-zinc-700 transition-colors"></textarea>
             <div class="flex gap-3">
@@ -88,10 +86,10 @@ const ICONS = {
     INFO: '<svg class="w-8 h-8 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
 };
 
-function resetUI(){
+function resetUI() {
     const card = document.getElementById('status-card');
-    card.classList.remove('success-glow','fail-glow');
-    document.getElementById('status-text').className="text-2xl font-bold text-white tracking-tight";
+    card.classList.remove('success-glow', 'fail-glow');
+    document.getElementById('status-text').className = "text-2xl font-bold text-white tracking-tight";
     document.getElementById('source-section').classList.add('hidden');
     document.getElementById('details-section').classList.add('hidden');
     document.getElementById('manual-import-ui').classList.add('hidden');
@@ -103,7 +101,7 @@ function renderState(state, data) {
     const text = document.getElementById('status-text');
     const desc = document.getElementById('status-desc');
 
-    switch(state) {
+    switch (state) {
         case 'idle':
             icon.innerHTML = ICONS.IDLE;
             text.innerText = "No Proof Provided";
@@ -131,7 +129,7 @@ function showSource(res) {
     document.getElementById('source-origin').innerText = res.source_origin || "direct input";
 }
 
-function renderSuccess(proof, res){
+function renderSuccess(proof, res) {
     renderState('proof_loaded', res);
     const card = document.getElementById('status-card');
     card.classList.add('success-glow');
@@ -148,7 +146,7 @@ function renderSuccess(proof, res){
     document.getElementById('detail-signer').innerText = proof.signer.key_id || (proof.signer.pubkey ? proof.signer.pubkey.slice(0, 10) : "---");
 }
 
-function renderResolutionFail(res){
+function renderResolutionFail(res) {
     resetUI();
     const card = document.getElementById('status-card');
     card.classList.add('fail-glow');
@@ -158,14 +156,12 @@ function renderResolutionFail(res){
     document.getElementById('status-desc').innerText = (res.error_class || "unknown").replace(/_/g, ' ') + ": " + (res.error_detail || "");
     document.getElementById('manual-import-ui').classList.remove('hidden');
 
-    // FIX 8: Always show source provenance if tier or descriptor is known
     if (res.source_tier !== null || res.source_descriptor !== null) {
         showSource(res);
     }
 }
 
-function renderVerifyFail(verdict){
-    // Keep source visible if it was resolved
+function renderVerifyFail(verdict) {
     const card = document.getElementById('status-card');
     card.classList.add('fail-glow');
     document.getElementById('status-icon').innerHTML = ICONS.FAIL;
@@ -190,6 +186,73 @@ function handleFileSelect(event) {
     };
     reader.readAsText(file);
 }
+
+window.resolveManual = async (json) => {
+    if (typeof resetHarnessState === 'function') {
+        resetHarnessState();
+    }
+
+    if (typeof renderState === 'function') {
+        renderState('resolving');
+    }
+
+    if (!window.ResolutionModule || typeof ResolutionModule.resolveManualImport !== 'function') {
+        renderResolutionFail({
+            source_tier: 3,
+            source_descriptor: "manual_import",
+            source_origin: "direct_input",
+            error_class: "internal_verifier_error",
+            error_detail: "Manual resolution module unavailable"
+        });
+        return;
+    }
+
+    const res = await ResolutionModule.resolveManualImport({ manual_proof: json });
+
+    if (!res) {
+        renderResolutionFail({
+            source_tier: 3,
+            source_descriptor: "manual_import",
+            source_origin: "direct_input",
+            error_class: "internal_verifier_error",
+            error_detail: "Manual resolution returned null"
+        });
+        return;
+    }
+
+    if (res.status === "proof_resolved") {
+        renderState("proof_loaded", res);
+        const verdict = await verifyProof(res.parsed_proof);
+
+        if (verdict.decision === "VALID") {
+            renderSuccess(verdict.proof, res);
+        } else {
+            renderVerifyFail(verdict);
+        }
+    } else {
+        renderResolutionFail(res);
+    }
+};
+
+document.addEventListener("DOMContentLoaded", () => {
+    if (typeof boot === 'function') {
+        boot();
+    } else {
+        renderResolutionFail({
+            source_tier: null,
+            source_descriptor: null,
+            source_origin: null,
+            error_class: "internal_verifier_error",
+            error_detail: "boot() function unavailable"
+        });
+    }
+});
+
+window.onhashchange = () => {
+    if (typeof boot === 'function') {
+        boot();
+    }
+};
 </script>
 </body>
 </html>
