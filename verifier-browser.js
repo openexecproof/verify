@@ -1,191 +1,477 @@
 const CODES = {
-    DECODE_FAILED_INVALID_BASE64URL: "decode_failed_invalid_base64url",
-    UTF8_INVALID: "utf8_invalid",
-    JSON_INVALID: "json_invalid",
-    SCHEMA_MISSING_REQUIRED_FIELD: "schema_missing_required_field",
-    SCHEMA_UNKNOWN_FIELD: "schema_unknown_field",
-    SCHEMA_WRONG_TYPE: "schema_wrong_type",
+    MALFORMED_INPUT: "malformed_input",
+    SCHEMA_INVALID: "schema_invalid",
+    UNSUPPORTED_PROTOCOL_VERSION: "unsupported_protocol_version",
+    INVALID_EXECUTION_ID: "invalid_execution_id",
     IDENTITY_MISMATCH: "identity_mismatch",
     SIGNATURE_INVALID: "signature_invalid",
-    SIGNATURE_MISSING: "signature_missing",
-    SIGNER_UNSUPPORTED: "signer_unsupported",
-    FRAGMENT_TOO_LARGE: "fragment_too_large"
+    PROOF_NOT_FOUND: "proof_not_found",
+    NETWORK_FETCH_FAILED: "network_fetch_failed",
+    ORIGIN_MISMATCH: "origin_mismatch",
+    SOURCE_UNTRUSTED: "source_untrusted",
+    RESOLUTION_EXHAUSTED: "resolution_exhausted",
+    INTERNAL_VERIFIER_ERROR: "internal_verifier_error"
 };
 
 const MAX_FRAGMENT_SIZE = 256 * 1024;
 
-function jcsCanonicalize(o) {
-    if (o === null) throw new Error("Null forbidden");
-    if (typeof o === "string") return JSON.stringify(o);
-    if (typeof o === "number") {
-        if (!Number.isInteger(o)) throw new Error("Float forbidden");
-        return o.toString();
-    }
-    if (typeof o === "boolean") throw new Error("Boolean forbidden in core");
-    if (Array.isArray(o)) return "[" + o.map(jcsCanonicalize).join(",") + "]";
-    if (typeof o === "object") {
-        const k = Object.keys(o).sort();
-        return "{" + k.map(k => JSON.stringify(k) + ":" + jcsCanonicalize(o[k])).join(",") + "}";
-    }
-    throw new Error("Unsupported type");
+const DESCRIPTORS = {
+    EMBEDDED: "embedded_fragment",
+    EXPLICIT_URL: "explicit_url",
+    CANONICAL_MIRROR: "canonical_mirror",
+    MIRROR_HINT: "mirror_hint",
+    MANUAL: "manual_import",
+    LOCAL: "local_known_source"
+};
+
+// TRUTH HARNESS GLOBALS
+window.__GUBAZ_TRACE__ = [];
+window.__GUBAZ_RESULT__ = null;
+
+let stepCounter = 0;
+
+function resetHarnessState() {
+    window.__GUBAZ_TRACE__ = [];
+    window.__GUBAZ_RESULT__ = null;
+    stepCounter = 0;
 }
 
-function b64urlToBytes(s) {
-    if (typeof s !== "string" || s.length === 0) {
-        throw new Error("Strict Base64url violation");
-    }
-
-    // STRICT: No padding, no invalid chars
-    if (s.includes("=") || /[^A-Za-z0-9_-]/.test(s)) {
-        throw new Error("Strict Base64url violation");
-    }
-
-    let m = s.replace(/-/g, "+").replace(/_/g, "/");
-    const p = m.length % 4;
-    if (p === 1) throw new Error("Invalid base64 length");
-    if (p > 0) m += "=".repeat(4 - p);
-
-    const b = atob(m);
-    return Uint8Array.from(b, c => c.charCodeAt(0));
+function logTrace(entry) {
+    window.__GUBAZ_TRACE__.push({
+        step_index: stepCounter++,
+        attempt_index: entry.attempt_index || 0,
+        source_tier: entry.source_tier !== undefined ? entry.source_tier : null,
+        source_descriptor: entry.source_descriptor || null,
+        source_origin: entry.source_origin || null,
+        candidate_reference: entry.candidate_reference || entry.source_origin || null,
+        outcome: entry.outcome || "failed",
+        error_class: entry.error_class || null,
+        selected_final: !!entry.selected_final
+    });
 }
 
-async function sha256(d) {
-    const b = typeof d === "string" ? new TextEncoder().encode(d) : d;
-    return new Uint8Array(await crypto.subtle.digest("SHA-256", b));
+function bytesToHex(bytes) {
+    return Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
 }
 
-function bytesToHex(b) {
-    return Array.from(b).map(x => x.toString(16).padStart(2, "0")).join("");
+async function sha256(input) {
+    const bytes = typeof input === "string" ? new TextEncoder().encode(input) : input;
+    return new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
 }
 
-function decodeFragment(hash) {
-    const raw = typeof hash === "string"
-        ? (hash.startsWith("#") ? hash.slice(1) : hash)
-        : "";
+function b64urlToBytes(value) {
+    const normalized = String(value).replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+    const bin = atob(padded);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+}
 
-    if (!raw) {
-        throw { code: "EMPTY", message: "No proof in URL fragment" };
+// Deterministic JSON canonicalization sufficient for OEP execution_core.
+function jcsCanonicalize(value) {
+    if (value === null || typeof value !== "object") {
+        return JSON.stringify(value);
     }
 
-    if (raw.length > MAX_FRAGMENT_SIZE) {
-        throw { code: CODES.FRAGMENT_TOO_LARGE, message: "Fragment exceeds 256KB" };
+    if (Array.isArray(value)) {
+        return "[" + value.map(jcsCanonicalize).join(",") + "]";
     }
 
-    try {
-        const bin = b64urlToBytes(raw);
-        return new TextDecoder("utf-8", { fatal: true }).decode(bin);
-    } catch (_e) {
-        throw { code: CODES.DECODE_FAILED_INVALID_BASE64URL, message: "Invalid base64url" };
+    const keys = Object.keys(value).sort();
+    return "{" + keys.map(k => JSON.stringify(k) + ":" + jcsCanonicalize(value[k])).join(",") + "}";
+}
+
+// Duplicate-key detection must happen on raw text before JSON.parse.
+function detectDuplicateKeys(jsonText) {
+    const keyRegex = /"([^"\\]*(?:\\.[^"\\]*)*)"\s*:/g;
+    const seen = new Set();
+    let match;
+
+    while ((match = keyRegex.exec(jsonText)) !== null) {
+        const key = JSON.parse('"' + match[1].replace(/"/g, '\\"') + '"');
+        if (seen.has(key)) return true;
+        seen.add(key);
     }
+
+    return false;
 }
 
 function strictParse(json) {
-    if (typeof json !== "string" || json.length === 0) {
-        throw new Error("Empty JSON payload");
+    if (detectDuplicateKeys(json)) {
+        throw { code: CODES.MALFORMED_INPUT, message: "Duplicate keys detected" };
     }
-
-    const keys = [];
-    JSON.parse(json, (k, v) => {
-        if (k !== "" && keys.includes(k)) throw new Error("Duplicate key: " + k);
-        if (k !== "") keys.push(k);
-        return v;
-    });
-
-    const parsed = JSON.parse(json);
-
-    const walk = (o) => {
-        if (o === null) throw new Error("Null values forbidden");
-        if (typeof o === "object") Object.values(o).forEach(walk);
-    };
-    walk(parsed);
-
-    return parsed;
+    return JSON.parse(json);
 }
 
+/**
+ * RESOLUTION MODULE
+ */
+class ResolutionModule {
+    static parseInputs() {
+        const params = new URLSearchParams(window.location.search);
+        const rawHash = typeof window.location.hash === "string" ? window.location.hash : "";
+        const hash = rawHash.startsWith("#") ? rawHash.slice(1) : rawHash;
+
+        let embedded = null;
+        if (typeof hash === "string" && hash.startsWith("proof=")) {
+            embedded = hash.slice(6);
+        } else if (typeof hash === "string" && hash.length > 0 && !hash.includes("=")) {
+            embedded = hash;
+        }
+
+        return {
+            embedded_proof: embedded,
+            proof_url: params.get("proof_url"),
+            execution_id: params.get("id"),
+            mirror_bases: params.getAll("mirror"),
+            manual_proof: null
+        };
+    }
+
+    static evaluatePrecedence(req) {
+        if (req.embedded_proof) return 0;
+        if (req.proof_url) return 1;
+        if (req.execution_id) return 2;
+        if (req.manual_proof) return 3;
+        return -1;
+    }
+
+    static normalizeResult(res) {
+        const normalized = {
+            status: res.status || "resolution_failed",
+            source_tier: res.source_tier !== undefined ? res.source_tier : null,
+            source_descriptor: res.source_descriptor || null,
+            source_origin: res.source_origin || null,
+            proof_bytes: res.proof_bytes || null,
+            parsed_proof: res.parsed_proof || null,
+            error_class: res.error_class || null,
+            error_detail: res.error_detail || null,
+            trace: [...window.__GUBAZ_TRACE__]
+        };
+
+        if (normalized.status === "proof_resolved") {
+            if (normalized.source_tier === null) throw new Error("Tier missing in successful resolution");
+            if (!normalized.source_descriptor) throw new Error("Descriptor missing in successful resolution");
+            if (!normalized.source_origin) throw new Error("Source origin missing in successful resolution");
+        }
+
+        return normalized;
+    }
+
+    static async resolveEmbedded(req) {
+        if (!req.embedded_proof) return null;
+
+        if (req.embedded_proof.length > MAX_FRAGMENT_SIZE) {
+            const fail = {
+                status: "resolution_failed",
+                source_tier: 0,
+                source_descriptor: DESCRIPTORS.EMBEDDED,
+                source_origin: "direct_input",
+                error_class: CODES.MALFORMED_INPUT,
+                error_detail: "Fragment exceeds 256KB"
+            };
+            logTrace({ ...fail, outcome: "failed", selected_final: true });
+            return this.normalizeResult(fail);
+        }
+
+        try {
+            const bin = b64urlToBytes(req.embedded_proof);
+            const json = new TextDecoder("utf-8", { fatal: true }).decode(bin);
+            const parsed = strictParse(json);
+
+            const ok = {
+                status: "proof_resolved",
+                source_tier: 0,
+                source_descriptor: DESCRIPTORS.EMBEDDED,
+                source_origin: "direct_input",
+                proof_bytes: json,
+                parsed_proof: parsed
+            };
+            logTrace({ ...ok, outcome: "proof_resolved", selected_final: true });
+            return this.normalizeResult(ok);
+        } catch (e) {
+            const fail = {
+                status: "resolution_failed",
+                source_tier: 0,
+                source_descriptor: DESCRIPTORS.EMBEDDED,
+                source_origin: "direct_input",
+                error_class: e.code || CODES.MALFORMED_INPUT,
+                error_detail: e.message || String(e)
+            };
+            logTrace({ ...fail, outcome: "failed", selected_final: true });
+            return this.normalizeResult(fail);
+        }
+    }
+
+    static async resolveExplicitUrl(req) {
+        if (!req.proof_url) return null;
+
+        try {
+            let url;
+            try {
+                url = new URL(req.proof_url);
+            } catch (_e) {
+                const fail = {
+                    status: "resolution_failed",
+                    source_tier: 1,
+                    source_descriptor: DESCRIPTORS.EXPLICIT_URL,
+                    source_origin: req.proof_url,
+                    error_class: CODES.MALFORMED_INPUT,
+                    error_detail: "Malformed URL format"
+                };
+                logTrace({ ...fail, outcome: "failed", selected_final: true });
+                return this.normalizeResult(fail);
+            }
+
+            const resp = await fetch(url.href);
+            if (!resp.ok) {
+                throw {
+                    code: resp.status === 404 ? CODES.PROOF_NOT_FOUND : CODES.NETWORK_FETCH_FAILED,
+                    message: `HTTP ${resp.status}`
+                };
+            }
+
+            const json = await resp.text();
+            const parsed = strictParse(json);
+
+            const ok = {
+                status: "proof_resolved",
+                source_tier: 1,
+                source_descriptor: DESCRIPTORS.EXPLICIT_URL,
+                source_origin: url.href,
+                proof_bytes: json,
+                parsed_proof: parsed
+            };
+            logTrace({ ...ok, outcome: "proof_resolved", selected_final: true });
+            return this.normalizeResult(ok);
+        } catch (e) {
+            const fail = {
+                status: "resolution_failed",
+                source_tier: 1,
+                source_descriptor: DESCRIPTORS.EXPLICIT_URL,
+                source_origin: req.proof_url,
+                error_class: e.code || CODES.NETWORK_FETCH_FAILED,
+                error_detail: e.message || String(e)
+            };
+            logTrace({ ...fail, outcome: "failed", selected_final: true });
+            return this.normalizeResult(fail);
+        }
+    }
+
+    static async resolveExecutionId(req) {
+        if (!req.execution_id) return null;
+
+        if (!/^[a-f0-9]{64}$/i.test(req.execution_id)) {
+            const fail = {
+                status: "resolution_failed",
+                source_tier: 2,
+                source_descriptor: DESCRIPTORS.CANONICAL_MIRROR,
+                source_origin: "direct_input",
+                error_class: CODES.INVALID_EXECUTION_ID,
+                error_detail: "Invalid execution ID format (expected 64-char hex)"
+            };
+            logTrace({ ...fail, outcome: "failed", selected_final: true });
+            return this.normalizeResult(fail);
+        }
+
+        for (const base of (req.mirror_bases || [])) {
+            try {
+                new URL(base);
+            } catch (_e) {
+                const fail = {
+                    status: "resolution_failed",
+                    source_tier: 2,
+                    source_descriptor: DESCRIPTORS.MIRROR_HINT,
+                    source_origin: base,
+                    error_class: CODES.MALFORMED_INPUT,
+                    error_detail: "Malformed mirror base URL"
+                };
+                logTrace({ ...fail, outcome: "failed", selected_final: true });
+                return this.normalizeResult(fail);
+            }
+        }
+
+        const candidates = [
+            { base: window.location.origin, descriptor: DESCRIPTORS.CANONICAL_MIRROR },
+            ...(req.mirror_bases || []).map(b => ({ base: b, descriptor: DESCRIPTORS.MIRROR_HINT }))
+        ];
+
+        let lastErrorClass = CODES.RESOLUTION_EXHAUSTED;
+        let lastErrorDetail = "Exhausted all mirror candidates";
+        let lastErrorDescriptor = candidates[0].descriptor;
+        let lastErrorOrigin = `${window.location.origin}/p/${req.execution_id}.json`;
+
+        for (let i = 0; i < candidates.length; i++) {
+            const cand = candidates[i];
+            const cleanBase = cand.base.endsWith("/") ? cand.base.slice(0, -1) : cand.base;
+            const url = `${cleanBase}/p/${req.execution_id}.json`;
+
+            const entry = {
+                attempt_index: i + 1,
+                source_tier: 2,
+                source_descriptor: cand.descriptor,
+                source_origin: url,
+                outcome: "failed",
+                error_class: null
+            };
+
+            try {
+                const resp = await fetch(url);
+
+                if (resp.ok) {
+                    const json = await resp.text();
+                    const parsed = strictParse(json);
+
+                    entry.outcome = "proof_resolved";
+                    entry.selected_final = true;
+                    logTrace(entry);
+
+                    const ok = {
+                        status: "proof_resolved",
+                        source_tier: 2,
+                        source_descriptor: cand.descriptor,
+                        source_origin: url,
+                        proof_bytes: json,
+                        parsed_proof: parsed
+                    };
+                    return this.normalizeResult(ok);
+                }
+
+                entry.error_class = resp.status === 404 ? CODES.PROOF_NOT_FOUND : CODES.NETWORK_FETCH_FAILED;
+                lastErrorClass = entry.error_class;
+                lastErrorDetail = `HTTP ${resp.status}`;
+                lastErrorDescriptor = cand.descriptor;
+                lastErrorOrigin = url;
+            } catch (e) {
+                entry.error_class = e.code || ((e instanceof TypeError) ? CODES.NETWORK_FETCH_FAILED : CODES.MALFORMED_INPUT);
+                lastErrorClass = entry.error_class;
+                lastErrorDetail = e.message || String(e);
+                lastErrorDescriptor = cand.descriptor;
+                lastErrorOrigin = url;
+            }
+
+            logTrace(entry);
+        }
+
+        const fail = {
+            status: "resolution_failed",
+            source_tier: 2,
+            source_descriptor: lastErrorDescriptor,
+            source_origin: lastErrorOrigin,
+            error_class: lastErrorClass,
+            error_detail: lastErrorDetail
+        };
+        logTrace({ ...fail, outcome: "failed", selected_final: true });
+        return this.normalizeResult(fail);
+    }
+
+    static async resolveManualImport(req) {
+        if (!req.manual_proof) return null;
+
+        try {
+            const parsed = strictParse(req.manual_proof);
+            const ok = {
+                status: "proof_resolved",
+                source_tier: 3,
+                source_descriptor: DESCRIPTORS.MANUAL,
+                source_origin: "direct_input",
+                proof_bytes: req.manual_proof,
+                parsed_proof: parsed
+            };
+            logTrace({ ...ok, outcome: "proof_resolved", selected_final: true });
+            return this.normalizeResult(ok);
+        } catch (e) {
+            const fail = {
+                status: "resolution_failed",
+                source_tier: 3,
+                source_descriptor: DESCRIPTORS.MANUAL,
+                source_origin: "direct_input",
+                error_class: e.code || CODES.MALFORMED_INPUT,
+                error_detail: e.message || String(e)
+            };
+            logTrace({ ...fail, outcome: "failed", selected_final: true });
+            return this.normalizeResult(fail);
+        }
+    }
+}
+
+/**
+ * VERIFICATION STAGE
+ */
 function validateSchema(p) {
     if (!p || typeof p !== "object" || Array.isArray(p)) {
-        throw { code: CODES.SCHEMA_WRONG_TYPE, message: "Proof must be object" };
+        throw { code: CODES.SCHEMA_INVALID, message: "Proof must be object" };
     }
 
     const req = ["execution_core", "execution_id", "signer", "signature", "proof_class"];
     for (const k of req) {
-        if (!(k in p)) {
-            throw { code: CODES.SCHEMA_MISSING_REQUIRED_FIELD, message: "Missing: " + k };
-        }
+        if (!(k in p)) throw { code: CODES.SCHEMA_INVALID, message: "Missing: " + k };
     }
 
     if (p.proof_class !== "portable") {
-        throw { code: CODES.SCHEMA_WRONG_TYPE, message: "proof_class must be portable" };
+        throw { code: CODES.SCHEMA_INVALID, message: "proof_class must be portable" };
     }
 
     if (!p.execution_core || typeof p.execution_core !== "object" || Array.isArray(p.execution_core)) {
-        throw { code: CODES.SCHEMA_WRONG_TYPE, message: "execution_core must be object" };
+        throw { code: CODES.SCHEMA_INVALID, message: "execution_core must be object" };
     }
 
     if (!p.signer || typeof p.signer !== "object" || Array.isArray(p.signer)) {
-        throw { code: CODES.SCHEMA_WRONG_TYPE, message: "signer must be object" };
+        throw { code: CODES.SCHEMA_INVALID, message: "signer must be object" };
+    }
+
+    if (typeof p.signature !== "string" || p.signature.length === 0) {
+        throw { code: CODES.SCHEMA_INVALID, message: "signature must be non-empty string" };
+    }
+
+    if (typeof p.signer.pubkey !== "string" || p.signer.pubkey.length === 0) {
+        throw { code: CODES.SCHEMA_INVALID, message: "signer.pubkey must be non-empty string" };
     }
 
     const core = p.execution_core;
     const creq = ["protocol_version", "command", "stdout_hash", "stderr_hash", "exit_code", "env_fingerprint", "issued_at"];
+
+    if (Object.keys(core).length !== creq.length) {
+        throw { code: CODES.SCHEMA_INVALID, message: "Execution Core must have exactly 7 fields" };
+    }
+
     for (const k of creq) {
-        if (!(k in core)) {
-            throw { code: CODES.SCHEMA_MISSING_REQUIRED_FIELD, message: "Missing core: " + k };
-        }
+        if (!(k in core)) throw { code: CODES.SCHEMA_INVALID, message: "Missing core: " + k };
     }
 
     if (core.protocol_version !== "oep-1") {
-        throw { code: CODES.SCHEMA_WRONG_TYPE, message: "Unsupported protocol version" };
+        throw { code: CODES.UNSUPPORTED_PROTOCOL_VERSION, message: "Unsupported protocol version" };
     }
 
     if (!Array.isArray(core.command)) {
-        throw { code: CODES.SCHEMA_WRONG_TYPE, message: "command must be list" };
+        throw { code: CODES.SCHEMA_INVALID, message: "command must be list" };
     }
 
     if (!core.command.every(x => typeof x === "string")) {
-        throw { code: CODES.SCHEMA_WRONG_TYPE, message: "command entries must be strings" };
+        throw { code: CODES.SCHEMA_INVALID, message: "command entries must be strings" };
     }
 
-    if (typeof core.exit_code !== "number" || !Number.isInteger(core.exit_code)) {
-        throw { code: CODES.SCHEMA_WRONG_TYPE, message: "exit_code must be integer" };
+    if (!Number.isInteger(core.exit_code)) {
+        throw { code: CODES.SCHEMA_INVALID, message: "exit_code must be numeric integer" };
     }
 
-    const requiredStringFields = ["stdout_hash", "stderr_hash", "env_fingerprint", "issued_at"];
+    const requiredStringFields = ["protocol_version", "stdout_hash", "stderr_hash", "env_fingerprint", "issued_at"];
     for (const k of requiredStringFields) {
         if (typeof core[k] !== "string" || core[k].length === 0) {
-            throw { code: CODES.SCHEMA_WRONG_TYPE, message: "Invalid core field: " + k };
+            throw { code: CODES.SCHEMA_INVALID, message: "Invalid core field: " + k };
         }
-    }
-
-    if (typeof p.execution_id !== "string" || p.execution_id.length === 0) {
-        throw { code: CODES.SCHEMA_WRONG_TYPE, message: "execution_id must be string" };
-    }
-
-    if (typeof p.signature !== "string") {
-        throw { code: CODES.SCHEMA_WRONG_TYPE, message: "signature must be string" };
     }
 }
 
-async function verifyProof(json) {
-    let proof;
-    try {
-        if (!json) throw new Error("Empty proof payload");
-        proof = strictParse(json);
-    } catch (e) {
-        return {
-            decision: "INVALID",
-            failure_class: "schema_error",
-            message: "Parse failure: " + (e.message || String(e))
-        };
-    }
-
+async function verifyProof(proof) {
     try {
         validateSchema(proof);
     } catch (e) {
         return {
             decision: "INVALID",
-            failure_class: "schema_error",
-            message: "Schema failure: " + (e.message || String(e))
+            failure_class: e.code || CODES.SCHEMA_INVALID,
+            message: e.message || String(e)
         };
     }
 
@@ -195,7 +481,7 @@ async function verifyProof(json) {
     } catch (e) {
         return {
             decision: "INVALID",
-            failure_class: "identity_mismatch",
+            failure_class: CODES.IDENTITY_MISMATCH,
             message: "JCS failure: " + (e.message || String(e))
         };
     }
@@ -203,124 +489,139 @@ async function verifyProof(json) {
     const idBytes = await sha256(coreBytes);
     const recomputedId = bytesToHex(idBytes).toLowerCase();
 
+    if (!/^[0-9a-f]{64}$/.test(proof.execution_id || "")) {
+        return {
+            decision: "INVALID",
+            failure_class: CODES.INVALID_EXECUTION_ID,
+            message: "Malformed execution ID"
+        };
+    }
+
     if (recomputedId !== (proof.execution_id || "").toLowerCase()) {
         return {
             decision: "INVALID",
-            failure_class: "identity_mismatch",
-            message: "Execution ID mismatch: recomputed " + recomputedId + " but got " + proof.execution_id
-        };
-    }
-
-    const signer = proof.signer;
-    if (!signer || typeof signer !== "object" || Array.isArray(signer)) {
-        return {
-            decision: "INVALID",
-            failure_class: "schema_error",
-            message: "Schema failure: signer must be object"
-        };
-    }
-
-    if (!proof.signature) {
-        return {
-            decision: "INVALID",
-            failure_class: "signature_missing",
-            message: "Signature verification failed"
-        };
-    }
-
-    if (signer.alg !== "Ed25519") {
-        return {
-            decision: "INVALID",
-            failure_class: "signer_unsupported",
-            message: "Unsupported signer algorithm"
-        };
-    }
-
-    if (typeof signer.pubkey !== "string" || signer.pubkey.length === 0) {
-        return {
-            decision: "INVALID",
-            failure_class: "signature_invalid",
-            message: "Signature verification failed"
+            failure_class: CODES.IDENTITY_MISMATCH,
+            message: "Execution ID mismatch"
         };
     }
 
     try {
-        const pub = b64urlToBytes(signer.pubkey);
+        const pub = b64urlToBytes(proof.signer.pubkey);
         const sig = b64urlToBytes(proof.signature);
         const key = await crypto.subtle.importKey("raw", pub, { name: "Ed25519" }, false, ["verify"]);
-
         const scopeBytes = new TextEncoder().encode(recomputedId);
         const ok = await crypto.subtle.verify({ name: "Ed25519" }, key, sig, scopeBytes);
 
         if (!ok) {
             return {
                 decision: "INVALID",
-                failure_class: "signature_invalid",
-                message: "Signature verification failed"
+                failure_class: CODES.SIGNATURE_INVALID,
+                message: "Cryptographic verify failed"
             };
         }
     } catch (_e) {
         return {
             decision: "INVALID",
-            failure_class: "signature_invalid",
+            failure_class: CODES.SIGNATURE_INVALID,
             message: "Signature verification failed"
         };
     }
 
-    return { decision: "VALID", failure_class: null, proof: proof, execution_id: recomputedId };
+    return { decision: "VALID", proof: proof, execution_id: recomputedId };
 }
 
+/**
+ * BOOTSTRAP
+ */
 async function boot() {
-    const rawHash = typeof window.location.hash === "string" ? window.location.hash : "";
-    const hash = rawHash.startsWith("#") ? rawHash.slice(1) : rawHash;
+    resetHarnessState();
+    if (typeof resetUI === "function") resetUI();
 
-    if (hash) {
-        try {
-            if (typeof resetUI === "function") resetUI();
-            const json = decodeFragment(hash);
-            const result = await verifyProof(json);
+    const request = ResolutionModule.parseInputs();
+    const tier = ResolutionModule.evaluatePrecedence(request);
 
-            if (result.decision === "VALID") {
-                renderSuccess(result.proof, result);
-            } else {
-                renderFail(result.message || result.failure_class);
-            }
-            return;
-        } catch (e) {
-            if (typeof renderFail === "function") renderFail(e.message || String(e));
-            return;
-        }
+    if (tier === -1) {
+        if (typeof renderState === "function") renderState("idle");
+        return;
     }
 
-    const params = new URLSearchParams(window.location.search);
-    const id = params.get("id");
+    if (typeof renderState === "function") renderState("resolving");
 
-    if (id) {
-        try {
-            if (typeof resetUI === "function") resetUI();
+    let result = null;
+    if (tier === 0) result = await ResolutionModule.resolveEmbedded(request);
+    else if (tier === 1) result = await ResolutionModule.resolveExplicitUrl(request);
+    else if (tier === 2) result = await ResolutionModule.resolveExecutionId(request);
+    else if (tier === 3) result = await ResolutionModule.resolveManualImport(request);
 
-            if (!/^[a-f0-9]{64}$/.test(id)) {
-                throw new Error("Invalid proof id");
-            }
-
-            const proofUrl = `p/${id}.json`;
-            const resp = await fetch(proofUrl);
-            if (!resp.ok) throw new Error("Proof not found");
-
-            const json = await resp.text();
-            const result = await verifyProof(json);
-
-            if (result.decision === "VALID") {
-                renderSuccess(result.proof, result);
-            } else {
-                renderFail(result.message || result.failure_class);
-            }
-            return;
-        } catch (e) {
-            if (typeof renderFail === "function") renderFail(e.message || String(e));
-            return;
-        }
+    if (!result) {
+        window.__GUBAZ_RESULT__ = {
+            status: "resolution_failed",
+            source_tier: null,
+            source_descriptor: null,
+            source_origin: null,
+            proof_bytes: null,
+            parsed_proof: null,
+            error_class: CODES.INTERNAL_VERIFIER_ERROR,
+            error_detail: "Resolution returned null",
+            trace: [...window.__GUBAZ_TRACE__]
+        };
+        if (typeof renderResolutionFail === "function") renderResolutionFail(window.__GUBAZ_RESULT__);
+        return;
     }
 
-    if (typeof renderNeutral === "function") renderNeutral();
+    if (result.status !== "proof_resolved") {
+        window.__GUBAZ_RESULT__ = result;
+        if (typeof renderResolutionFail === "function") renderResolutionFail(result);
+        return;
+    }
+
+    if (typeof renderState === "function") renderState("proof_loaded", result);
+
+    const verdict = await verifyProof(result.parsed_proof);
+    window.__GUBAZ_RESULT__ = { ...result, verification: verdict };
+
+    if (verdict.decision === "VALID") {
+        if (typeof renderSuccess === "function") renderSuccess(verdict.proof, result);
+    } else {
+        if (typeof renderVerifyFail === "function") renderVerifyFail(verdict);
+    }
 }
+
+window.resolveManual = async (json) => {
+    resetHarnessState();
+    const res = await ResolutionModule.resolveManualImport({ manual_proof: json });
+
+    if (!res) {
+        window.__GUBAZ_RESULT__ = {
+            status: "resolution_failed",
+            source_tier: 3,
+            source_descriptor: DESCRIPTORS.MANUAL,
+            source_origin: "direct_input",
+            proof_bytes: null,
+            parsed_proof: null,
+            error_class: CODES.INTERNAL_VERIFIER_ERROR,
+            error_detail: "Manual resolution returned null",
+            trace: [...window.__GUBAZ_TRACE__]
+        };
+        if (typeof renderResolutionFail === "function") renderResolutionFail(window.__GUBAZ_RESULT__);
+        return;
+    }
+
+    if (res.status === "proof_resolved") {
+        if (typeof renderState === "function") renderState("proof_loaded", res);
+        const verdict = await verifyProof(res.parsed_proof);
+        window.__GUBAZ_RESULT__ = { ...res, verification: verdict };
+
+        if (verdict.decision === "VALID") {
+            if (typeof renderSuccess === "function") renderSuccess(verdict.proof, res);
+        } else {
+            if (typeof renderVerifyFail === "function") renderVerifyFail(verdict);
+        }
+    } else {
+        window.__GUBAZ_RESULT__ = res;
+        if (typeof renderResolutionFail === "function") renderResolutionFail(res);
+    }
+};
+
+document.addEventListener("DOMContentLoaded", boot);
+window.onhashchange = boot;
