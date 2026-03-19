@@ -1,0 +1,24 @@
+{
+  "execution_core": {
+    "protocol_version": "oep-1",
+    "command": [
+      "cmd",
+      "/c",
+      "echo",
+      "LOCK_TEST"
+    ],
+    "stdout_hash": "aaee0587f5794be698220cd4bbaa31d914005787db70c1f37fea1f3a1a6dabea",
+    "stderr_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "exit_code": 0,
+    "env_fingerprint": "c1b12b28809dccf8d6e4c2186ac931cb56df444d4ca023c511b1490fcb92553e",
+    "issued_at": "2026-03-19T06:52:14Z"
+  },
+  "execution_id": "c89c6a7ce8515c9692c6b6297cb027dc6d55966abf19f3f5342eac240e94e70c",
+  "signer": {
+    "key_id": "10fd541d9263aef4",
+    "pubkey": "aUT-w-y3MOgmeh56nlsU6gUKRWyuwa4nIH2lG2Q3OGI",
+    "alg": "Ed25519"
+  },
+  "signature": "q-J3mpJal0Ceys-8k_Orcdn_fQEqW8s5gEwsnzgUMJ53QrrYjA-S886SKq1pj99FGVoYCR3kVbCOTxvfSmRUAA",
+  "proof_class": "portable"
+}
