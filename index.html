@@ -76,7 +76,7 @@
     </div>
 </main>
 
-<script src="verifier-browser.js?v=20260321sigfix1"></script>
+<script src="verifier-browser.js?v=20260321sigfix2"></script>
 <script>
 const ICONS = {
     IDLE: '<div class="w-6 h-6 rounded-full bg-zinc-700"></div>',
@@ -169,7 +169,13 @@ function renderVerifyFail(verdict) {
     const card = document.getElementById('status-card');
     card.classList.add('fail-glow');
     document.getElementById('status-icon').innerHTML = ICONS.FAIL;
-    document.getElementById('status-text').innerText = "Invalid Proof";
+
+    if (verdict.decision === "UNSUPPORTED") {
+        document.getElementById('status-text').innerText = "Unsupported Environment";
+    } else {
+        document.getElementById('status-text').innerText = "Invalid Proof";
+    }
+
     document.getElementById('status-text').className = "text-2xl font-bold text-red-500 tracking-tight";
     document.getElementById('status-desc').innerText = (verdict.failure_class || "verification_failed").replace(/_/g, ' ') + ": " + (verdict.message || "");
 }

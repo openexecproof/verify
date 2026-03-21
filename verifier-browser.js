@@ -5,6 +5,7 @@ const CODES = {
     INVALID_EXECUTION_ID: "invalid_execution_id",
     IDENTITY_MISMATCH: "identity_mismatch",
     SIGNATURE_INVALID: "signature_invalid",
+    CRYPTO_NOT_SUPPORTED: "crypto_not_supported",
     PROOF_NOT_FOUND: "proof_not_found",
     NETWORK_FETCH_FAILED: "network_fetch_failed",
     ORIGIN_MISMATCH: "origin_mismatch",
@@ -587,9 +588,9 @@ async function verifyProof(proof) {
             typeof window.crypto.subtle.verify !== "function"
         ) {
             return {
-                decision: "INVALID",
-                failure_class: CODES.INTERNAL_VERIFIER_ERROR,
-                message: "WebCrypto unavailable in this browser"
+                decision: "UNSUPPORTED",
+                failure_class: CODES.CRYPTO_NOT_SUPPORTED,
+                message: "WebCrypto not available in this environment"
             };
         }
 
@@ -608,9 +609,9 @@ async function verifyProof(proof) {
             );
         } catch (e) {
             return {
-                decision: "INVALID",
-                failure_class: CODES.INTERNAL_VERIFIER_ERROR,
-                message: "Ed25519 importKey unsupported or failed: " + (e.message || String(e))
+                decision: "UNSUPPORTED",
+                failure_class: CODES.CRYPTO_NOT_SUPPORTED,
+                message: "Ed25519 not supported in this environment (importKey failed): " + (e.message || String(e))
             };
         }
 
@@ -624,9 +625,9 @@ async function verifyProof(proof) {
             );
         } catch (e) {
             return {
-                decision: "INVALID",
-                failure_class: CODES.INTERNAL_VERIFIER_ERROR,
-                message: "Ed25519 verify unsupported or failed: " + (e.message || String(e))
+                decision: "UNSUPPORTED",
+                failure_class: CODES.CRYPTO_NOT_SUPPORTED,
+                message: "Ed25519 not supported in this environment (verify failed): " + (e.message || String(e))
             };
         }
 
@@ -639,9 +640,9 @@ async function verifyProof(proof) {
         }
     } catch (e) {
         return {
-            decision: "INVALID",
-            failure_class: CODES.INTERNAL_VERIFIER_ERROR,
-            message: "Unexpected verification environment failure: " + (e.message || String(e))
+            decision: "UNSUPPORTED",
+            failure_class: CODES.CRYPTO_NOT_SUPPORTED,
+            message: "Verification environment does not support required cryptography: " + (e.message || String(e))
         };
     }
 
