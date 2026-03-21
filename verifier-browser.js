@@ -32,6 +32,7 @@ const PUBLIC_VERIFIER_PATH = "/verify";
 window.__GUBAZ_TRACE__ = [];
 window.__GUBAZ_RESULT__ = null;
 window.__GUBAZ_DEBUG__ = [];
+window.__LAST_VERIFY_DIAG__ = null;
 
 let stepCounter = 0;
 
@@ -51,6 +52,7 @@ function resetHarnessState() {
     window.__GUBAZ_TRACE__ = [];
     window.__GUBAZ_RESULT__ = null;
     window.__GUBAZ_DEBUG__ = [];
+    window.__LAST_VERIFY_DIAG__ = null;
     stepCounter = 0;
 }
 
@@ -540,9 +542,20 @@ function validateSchema(p) {
 }
 
 async function verifyProof(proof) {
+    window.__LAST_VERIFY_DIAG__ = {
+        stage: "verify_begin",
+        native_available: !!(window.crypto && window.crypto.subtle),
+        fallback_present: !!(window.ED25519_FALLBACK && typeof window.ED25519_FALLBACK.verify === "function"),
+        path: null,
+        note: null,
+        error: null
+    };
+
     try {
         validateSchema(proof);
     } catch (e) {
+        window.__LAST_VERIFY_DIAG__.stage = "schema_invalid";
+        window.__LAST_VERIFY_DIAG__.error = e && e.message ? e.message : String(e);
         return {
             decision: "INVALID",
             failure_class: e.code || CODES.SCHEMA_INVALID,
@@ -554,6 +567,8 @@ async function verifyProof(proof) {
     try {
         coreBytes = new TextEncoder().encode(jcsCanonicalize(proof.execution_core));
     } catch (e) {
+        window.__LAST_VERIFY_DIAG__.stage = "jcs_failure";
+        window.__LAST_VERIFY_DIAG__.error = e && e.message ? e.message : String(e);
         return {
             decision: "INVALID",
             failure_class: CODES.IDENTITY_MISMATCH,
@@ -565,6 +580,8 @@ async function verifyProof(proof) {
     const recomputedId = bytesToHex(idBytes).toLowerCase();
 
     if (!/^[0-9a-f]{64}$/.test(proof.execution_id || "")) {
+        window.__LAST_VERIFY_DIAG__.stage = "invalid_execution_id_format";
+        window.__LAST_VERIFY_DIAG__.error = "Malformed execution ID";
         return {
             decision: "INVALID",
             failure_class: CODES.INVALID_EXECUTION_ID,
@@ -573,6 +590,8 @@ async function verifyProof(proof) {
     }
 
     if (recomputedId !== (proof.execution_id || "").toLowerCase()) {
+        window.__LAST_VERIFY_DIAG__.stage = "identity_mismatch";
+        window.__LAST_VERIFY_DIAG__.error = "Execution ID mismatch";
         return {
             decision: "INVALID",
             failure_class: CODES.IDENTITY_MISMATCH,
@@ -587,6 +606,53 @@ async function verifyProof(proof) {
             typeof window.crypto.subtle.importKey !== "function" ||
             typeof window.crypto.subtle.verify !== "function"
         ) {
+            window.__LAST_VERIFY_DIAG__.stage = "native_unavailable";
+            window.__LAST_VERIFY_DIAG__.path = "fallback_attempt_from_no_native";
+
+            if (
+                window.ED25519_FALLBACK &&
+                typeof window.ED25519_FALLBACK.verify === "function"
+            ) {
+                try {
+                    const pub = b64urlToBytes(proof.signer.pubkey);
+                    const sig = b64urlToBytes(proof.signature);
+                    const scopeBytes = new TextEncoder().encode(recomputedId);
+                    const okFallback = await window.ED25519_FALLBACK.verify(sig, scopeBytes, pub);
+
+                    if (!okFallback) {
+                        window.__LAST_VERIFY_DIAG__.stage = "fallback_invalid";
+                        window.__LAST_VERIFY_DIAG__.path = "fallback";
+                        window.__LAST_VERIFY_DIAG__.error = "fallback returned false";
+                        return {
+                            decision: "INVALID",
+                            failure_class: CODES.SIGNATURE_INVALID,
+                            message: "Fallback verify returned false"
+                        };
+                    }
+
+                    window.__LAST_VERIFY_DIAG__.stage = "fallback_valid";
+                    window.__LAST_VERIFY_DIAG__.path = "fallback";
+                    window.__LAST_VERIFY_DIAG__.note = "fallback returned true";
+
+                    return {
+                        decision: "VALID",
+                        proof: proof,
+                        execution_id: recomputedId,
+                        verification_path: "fallback"
+                    };
+                } catch (_fallbackErr) {
+                    window.__LAST_VERIFY_DIAG__.stage = "fallback_failed";
+                    window.__LAST_VERIFY_DIAG__.path = "fallback";
+                    window.__LAST_VERIFY_DIAG__.error = _fallbackErr && _fallbackErr.message ? _fallbackErr.message : String(_fallbackErr);
+                    return {
+                        decision: "UNSUPPORTED",
+                        failure_class: CODES.CRYPTO_NOT_SUPPORTED,
+                        message: "No supported Ed25519 verification path available"
+                    };
+                }
+            }
+
+            window.__LAST_VERIFY_DIAG__.error = "WebCrypto not available and fallback missing";
             return {
                 decision: "UNSUPPORTED",
                 failure_class: CODES.CRYPTO_NOT_SUPPORTED,
@@ -608,6 +674,50 @@ async function verifyProof(proof) {
                 ["verify"]
             );
         } catch (e) {
+            window.__LAST_VERIFY_DIAG__.stage = "native_importkey_failed";
+            window.__LAST_VERIFY_DIAG__.path = "fallback_attempt_from_importkey";
+            window.__LAST_VERIFY_DIAG__.error = e && e.message ? e.message : String(e);
+
+            if (
+                window.ED25519_FALLBACK &&
+                typeof window.ED25519_FALLBACK.verify === "function"
+            ) {
+                try {
+                    const okFallback = await window.ED25519_FALLBACK.verify(sig, scopeBytes, pub);
+
+                    if (!okFallback) {
+                        window.__LAST_VERIFY_DIAG__.stage = "fallback_invalid";
+                        window.__LAST_VERIFY_DIAG__.path = "fallback";
+                        window.__LAST_VERIFY_DIAG__.error = "fallback returned false";
+                        return {
+                            decision: "INVALID",
+                            failure_class: CODES.SIGNATURE_INVALID,
+                            message: "Fallback verify returned false"
+                        };
+                    }
+
+                    window.__LAST_VERIFY_DIAG__.stage = "fallback_valid";
+                    window.__LAST_VERIFY_DIAG__.path = "fallback";
+                    window.__LAST_VERIFY_DIAG__.note = "fallback returned true";
+
+                    return {
+                        decision: "VALID",
+                        proof: proof,
+                        execution_id: recomputedId,
+                        verification_path: "fallback"
+                    };
+                } catch (_fallbackErr) {
+                    window.__LAST_VERIFY_DIAG__.stage = "fallback_failed";
+                    window.__LAST_VERIFY_DIAG__.path = "fallback";
+                    window.__LAST_VERIFY_DIAG__.error = _fallbackErr && _fallbackErr.message ? _fallbackErr.message : String(_fallbackErr);
+                    return {
+                        decision: "UNSUPPORTED",
+                        failure_class: CODES.CRYPTO_NOT_SUPPORTED,
+                        message: "No supported Ed25519 verification path available"
+                    };
+                }
+            }
+
             return {
                 decision: "UNSUPPORTED",
                 failure_class: CODES.CRYPTO_NOT_SUPPORTED,
@@ -624,6 +734,50 @@ async function verifyProof(proof) {
                 scopeBytes
             );
         } catch (e) {
+            window.__LAST_VERIFY_DIAG__.stage = "native_verify_failed";
+            window.__LAST_VERIFY_DIAG__.path = "fallback_attempt_from_verify";
+            window.__LAST_VERIFY_DIAG__.error = e && e.message ? e.message : String(e);
+
+            if (
+                window.ED25519_FALLBACK &&
+                typeof window.ED25519_FALLBACK.verify === "function"
+            ) {
+                try {
+                    const okFallback = await window.ED25519_FALLBACK.verify(sig, scopeBytes, pub);
+
+                    if (!okFallback) {
+                        window.__LAST_VERIFY_DIAG__.stage = "fallback_invalid";
+                        window.__LAST_VERIFY_DIAG__.path = "fallback";
+                        window.__LAST_VERIFY_DIAG__.error = "fallback returned false";
+                        return {
+                            decision: "INVALID",
+                            failure_class: CODES.SIGNATURE_INVALID,
+                            message: "Fallback verify returned false"
+                        };
+                    }
+
+                    window.__LAST_VERIFY_DIAG__.stage = "fallback_valid";
+                    window.__LAST_VERIFY_DIAG__.path = "fallback";
+                    window.__LAST_VERIFY_DIAG__.note = "fallback returned true";
+
+                    return {
+                        decision: "VALID",
+                        proof: proof,
+                        execution_id: recomputedId,
+                        verification_path: "fallback"
+                    };
+                } catch (_fallbackErr) {
+                    window.__LAST_VERIFY_DIAG__.stage = "fallback_failed";
+                    window.__LAST_VERIFY_DIAG__.path = "fallback";
+                    window.__LAST_VERIFY_DIAG__.error = _fallbackErr && _fallbackErr.message ? _fallbackErr.message : String(_fallbackErr);
+                    return {
+                        decision: "UNSUPPORTED",
+                        failure_class: CODES.CRYPTO_NOT_SUPPORTED,
+                        message: "No supported Ed25519 verification path available"
+                    };
+                }
+            }
+
             return {
                 decision: "UNSUPPORTED",
                 failure_class: CODES.CRYPTO_NOT_SUPPORTED,
@@ -632,6 +786,9 @@ async function verifyProof(proof) {
         }
 
         if (!ok) {
+            window.__LAST_VERIFY_DIAG__.stage = "native_invalid";
+            window.__LAST_VERIFY_DIAG__.path = "native";
+            window.__LAST_VERIFY_DIAG__.error = "native verify returned false";
             return {
                 decision: "INVALID",
                 failure_class: CODES.SIGNATURE_INVALID,
@@ -639,6 +796,8 @@ async function verifyProof(proof) {
             };
         }
     } catch (e) {
+        window.__LAST_VERIFY_DIAG__.stage = "outer_verify_exception";
+        window.__LAST_VERIFY_DIAG__.error = e && e.message ? e.message : String(e);
         return {
             decision: "UNSUPPORTED",
             failure_class: CODES.CRYPTO_NOT_SUPPORTED,
@@ -646,7 +805,16 @@ async function verifyProof(proof) {
         };
     }
 
-    return { decision: "VALID", proof: proof, execution_id: recomputedId };
+    window.__LAST_VERIFY_DIAG__.stage = "native_valid";
+    window.__LAST_VERIFY_DIAG__.path = "native";
+    window.__LAST_VERIFY_DIAG__.note = "native verify returned true";
+
+    return {
+        decision: "VALID",
+        proof: proof,
+        execution_id: recomputedId,
+        verification_path: "native"
+    };
 }
 
 /**

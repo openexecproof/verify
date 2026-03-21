@@ -76,8 +76,8 @@
     </div>
 </main>
 
-<script src="ed25519-fallback.js?v=20260321fallback1"></script>
-<script src="verifier-browser.js?v=20260321fallbackhook1"></script>
+<script src="ed25519-fallback.js?v=20260321fallbackdiag2"></script>
+<script src="verifier-browser.js?v=20260321verifydiag2"></script>
 <script>
 const ICONS = {
     IDLE: '<div class="w-6 h-6 rounded-full bg-zinc-700"></div>',
@@ -150,6 +150,10 @@ function renderSuccess(proof, res) {
     document.getElementById('detail-exit').innerText = core.exit_code === 0 ? "Success (0)" : "Failed (" + core.exit_code + ")";
     document.getElementById('detail-hash').innerText = proof.execution_id;
     document.getElementById('detail-signer').innerText = proof.signer.key_id || (proof.signer.pubkey ? proof.signer.pubkey.slice(0, 10) : "---");
+
+    if (window.__LAST_VERIFY_DIAG__) {
+        console.log("[VERIFY_DIAG]", window.__LAST_VERIFY_DIAG__);
+    }
 }
 
 function renderResolutionFail(res) {
@@ -184,6 +188,10 @@ function renderVerifyFail(verdict) {
 
     document.getElementById('status-text').className = "text-2xl font-bold text-red-500 tracking-tight";
     document.getElementById('status-desc').innerText = (verdict.failure_class || "verification_failed").replace(/_/g, ' ') + ": " + (verdict.message || "");
+
+    if (window.__LAST_VERIFY_DIAG__) {
+        console.log("[VERIFY_DIAG]", window.__LAST_VERIFY_DIAG__);
+    }
 }
 
 async function handleManualPaste() {
