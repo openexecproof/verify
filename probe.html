@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>OEP Crypto Probe</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 16px; line-height: 1.5; }
+    pre { background: #111; color: #0f0; padding: 16px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+  </style>
+</head>
+<body>
+  <h1>OEP Crypto Probe</h1>
+  <p>This page tests whether the current browser can perform Ed25519 operations via WebCrypto.</p>
+  <pre id="out">running...</pre>
+
+<script>
+(async () => {
+  const out = document.getElementById('out');
+  const log = [];
+  const w = (k, v) => log.push(`${k}: ${v}`);
+
+  w('timestamp', new Date().toISOString());
+  w('userAgent', navigator.userAgent);
+  w('platform', navigator.platform || 'n/a');
+  w('location', location.href);
+  w('isSecureContext', String(window.isSecureContext));
+  w('crypto_exists', String(!!window.crypto));
+  w('subtle_exists', String(!!(window.crypto && window.crypto.subtle)));
+  w('TextEncoder_exists', String(typeof TextEncoder !== 'undefined'));
+
+  if (!(window.crypto && window.crypto.subtle)) {
+    w('final', 'NO_WEBCRYPTO');
+    out.textContent = log.join('\n');
+    return;
+  }
+
+  try {
+    const msg = new TextEncoder().encode('OEP_ED25519_PROBE');
+    w('phase', 'generateKey');
+    const kp = await crypto.subtle.generateKey(
+      { name: 'Ed25519' },
+      true,
+      ['sign', 'verify']
+    );
+    w('generateKey', 'OK');
+
+    w('phase', 'sign');
+    const sig = await crypto.subtle.sign(
+      { name: 'Ed25519' },
+      kp.privateKey,
+      msg
+    );
+    w('sign', `OK (${sig.byteLength} bytes)`);
+
+    w('phase', 'verify');
+    const valid = await crypto.subtle.verify(
+      { name: 'Ed25519' },
+      kp.publicKey,
+      sig,
+      msg
+    );
+    w('verify', String(valid));
+
+    w('final', valid ? 'ED25519_SUPPORTED' : 'ED25519_VERIFY_FALSE');
+  } catch (e) {
+    w('error_name', e && e.name ? e.name : 'unknown');
+    w('error_message', e && e.message ? e.message : String(e));
+    w('final', 'ED25519_UNSUPPORTED_OR_BLOCKED');
+  }
+
+  out.textContent = log.join('\n');
+})();
+</script>
+</body>
+</html>
