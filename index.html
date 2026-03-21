@@ -76,7 +76,8 @@
     </div>
 </main>
 
-<script src="verifier-browser.js?v=20260321sigfix2"></script>
+<script src="ed25519-fallback.js?v=20260321fallback1"></script>
+<script src="verifier-browser.js?v=20260321fallbackhook1"></script>
 <script>
 const ICONS = {
     IDLE: '<div class="w-6 h-6 rounded-full bg-zinc-700"></div>',
@@ -136,7 +137,12 @@ function renderSuccess(proof, res) {
     document.getElementById('status-icon').innerHTML = ICONS.SUCCESS;
     document.getElementById('status-text').innerText = "Verified Proof";
     document.getElementById('status-text').className = "text-2xl font-bold text-emerald-500 tracking-tight";
-    document.getElementById('status-desc').innerText = "Signature valid. Identity matches.";
+
+    let desc = "Signature valid. Identity matches.";
+    if (window.__GUBAZ_RESULT__ && window.__GUBAZ_RESULT__.verification && window.__GUBAZ_RESULT__.verification.verification_path === "fallback") {
+        desc = "Signature valid. Identity matches. Verified via fallback path.";
+    }
+    document.getElementById('status-desc').innerText = desc;
 
     document.getElementById('details-section').classList.remove('hidden');
     const core = proof.execution_core;
