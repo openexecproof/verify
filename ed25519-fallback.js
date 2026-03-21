@@ -1,10 +1,44 @@
 (function () {
+    const STATE = {
+        stage: "boot",
+        loaded: false,
+        module_url: null,
+        hasVerifyAsync: false,
+        last_error: null,
+        attempts: []
+    };
+
     let cachedModule = null;
     let loadingPromise = null;
+
+    function setState(patch) {
+        Object.assign(STATE, patch);
+        window.__ED25519_FALLBACK_STATE__ = {
+            stage: STATE.stage,
+            loaded: STATE.loaded,
+            module_url: STATE.module_url,
+            hasVerifyAsync: STATE.hasVerifyAsync,
+            last_error: STATE.last_error,
+            attempts: [...STATE.attempts]
+        };
+    }
+
+    function errToString(e) {
+        if (!e) return "unknown error";
+        if (typeof e === "string") return e;
+        if (e && e.message) return e.message;
+        try {
+            return String(e);
+        } catch (_e) {
+            return "unstringifiable error";
+        }
+    }
 
     async function loadNobleEd25519() {
         if (cachedModule) return cachedModule;
         if (loadingPromise) return loadingPromise;
+
+        setState({ stage: "loading_module" });
 
         loadingPromise = (async () => {
             const candidates = [
@@ -17,19 +51,44 @@
 
             for (const url of candidates) {
                 try {
+                    setState({ stage: "trying_candidate", module_url: url });
                     const mod = await import(url);
+
                     if (!mod || typeof mod.verifyAsync !== "function") {
                         throw new Error("Loaded module does not expose verifyAsync");
                     }
+
                     cachedModule = mod;
+                    setState({
+                        stage: "ready",
+                        loaded: true,
+                        module_url: url,
+                        hasVerifyAsync: true,
+                        last_error: null
+                    });
+
                     return mod;
                 } catch (e) {
+                    const msg = errToString(e);
                     lastError = e;
+                    STATE.attempts.push({ url, error: msg });
+                    setState({
+                        stage: "candidate_failed",
+                        last_error: msg
+                    });
+
                     try {
-                        console.warn("[ED25519_FALLBACK] load failed:", url, e);
+                        console.warn("[ED25519_FALLBACK] candidate failed:", url, msg);
                     } catch (_ignore) {}
                 }
             }
+
+            setState({
+                stage: "load_failed",
+                loaded: false,
+                hasVerifyAsync: false,
+                last_error: errToString(lastError || new Error("Unable to load @noble/ed25519 from CDN"))
+            });
 
             throw lastError || new Error("Unable to load @noble/ed25519 from CDN");
         })();
@@ -45,34 +104,65 @@
 
     window.ED25519_FALLBACK = {
         async verify(sig, msg, pubkey) {
+            setState({ stage: "verify_called" });
+
             ensureUint8Array(sig, "sig");
             ensureUint8Array(msg, "msg");
             ensureUint8Array(pubkey, "pubkey");
 
             if (sig.length !== 64) {
-                throw new Error("Invalid Ed25519 signature length");
+                const e = "Invalid Ed25519 signature length";
+                setState({ stage: "verify_rejected", last_error: e });
+                throw new Error(e);
             }
 
             if (pubkey.length !== 32) {
-                throw new Error("Invalid Ed25519 public key length");
+                const e = "Invalid Ed25519 public key length";
+                setState({ stage: "verify_rejected", last_error: e });
+                throw new Error(e);
             }
 
             const noble = await loadNobleEd25519();
 
             try {
                 const ok = await noble.verifyAsync(sig, msg, pubkey);
+                setState({
+                    stage: ok ? "verify_true" : "verify_false",
+                    last_error: null
+                });
                 return !!ok;
             } catch (e) {
-                throw new Error("Fallback verify failed: " + (e && e.message ? e.message : String(e)));
+                const msgText = "Fallback verify failed: " + errToString(e);
+                setState({
+                    stage: "verify_failed",
+                    last_error: msgText
+                });
+                throw new Error(msgText);
             }
         },
 
         async selftest() {
-            const noble = await loadNobleEd25519();
-            return {
-                loaded: true,
-                hasVerifyAsync: !!(noble && typeof noble.verifyAsync === "function")
-            };
+            try {
+                const noble = await loadNobleEd25519();
+                return {
+                    ok: true,
+                    loaded: true,
+                    module_url: STATE.module_url,
+                    hasVerifyAsync: !!(noble && typeof noble.verifyAsync === "function"),
+                    state: window.__ED25519_FALLBACK_STATE__
+                };
+            } catch (e) {
+                return {
+                    ok: false,
+                    loaded: false,
+                    module_url: STATE.module_url,
+                    hasVerifyAsync: false,
+                    error: errToString(e),
+                    state: window.__ED25519_FALLBACK_STATE__
+                };
+            }
         }
     };
+
+    setState({ stage: "booted" });
 })();

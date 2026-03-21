@@ -1,0 +1,46 @@
+ <!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>OEP Fallback Selftest</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 16px; line-height: 1.5; background:#111; color:#ddd; }
+    pre { background:#000; color:#0f0; padding:16px; overflow:auto; white-space:pre-wrap; word-break:break-word; }
+  </style>
+</head>
+<body>
+  <h1>OEP Fallback Selftest</h1>
+  <p>This page tests whether the fallback Ed25519 module loads successfully.</p>
+  <pre id="out">running...</pre>
+
+  <script src="ed25519-fallback.js?v=20260321fallbackdiag1"></script>
+  <script>
+    (async () => {
+      const out = document.getElementById('out');
+      const lines = [];
+      const w = (k, v) => lines.push(`${k}: ${typeof v === 'string' ? v : JSON.stringify(v, null, 2)}`);
+
+      w('timestamp', new Date().toISOString());
+      w('userAgent', navigator.userAgent);
+      w('location', location.href);
+
+      if (!window.ED25519_FALLBACK || typeof window.ED25519_FALLBACK.selftest !== 'function') {
+        w('fatal', 'ED25519_FALLBACK.selftest unavailable');
+        out.textContent = lines.join('\n');
+        return;
+      }
+
+      const result = await window.ED25519_FALLBACK.selftest();
+      w('selftest_ok', String(result.ok));
+      w('loaded', String(result.loaded));
+      w('module_url', result.module_url || 'null');
+      w('hasVerifyAsync', String(result.hasVerifyAsync));
+      if (result.error) w('error', result.error);
+      w('state', result.state || null);
+
+      out.textContent = lines.join('\n');
+    })();
+  </script>
+</body>
+</html>
