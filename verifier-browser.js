@@ -30,12 +30,26 @@ const PUBLIC_VERIFIER_PATH = "/verify";
 // TRUTH HARNESS GLOBALS
 window.__GUBAZ_TRACE__ = [];
 window.__GUBAZ_RESULT__ = null;
+window.__GUBAZ_DEBUG__ = [];
 
 let stepCounter = 0;
+
+function debugLog(event, data) {
+    const entry = {
+        ts: new Date().toISOString(),
+        event,
+        data: data || null
+    };
+    window.__GUBAZ_DEBUG__.push(entry);
+    try {
+        console.log("[GUBAZ_DEBUG]", event, data || null);
+    } catch (_e) {}
+}
 
 function resetHarnessState() {
     window.__GUBAZ_TRACE__ = [];
     window.__GUBAZ_RESULT__ = null;
+    window.__GUBAZ_DEBUG__ = [];
     stepCounter = 0;
 }
 
@@ -71,7 +85,6 @@ function b64urlToBytes(value) {
     return out;
 }
 
-// Deterministic JSON canonicalization sufficient for OEP execution_core.
 function jcsCanonicalize(value) {
     if (value === null || typeof value !== "object") {
         return JSON.stringify(value);
@@ -85,7 +98,6 @@ function jcsCanonicalize(value) {
     return "{" + keys.map(k => JSON.stringify(k) + ":" + jcsCanonicalize(value[k])).join(",") + "}";
 }
 
-// Duplicate-key detection must happen on raw text before JSON.parse.
 function detectDuplicateKeys(jsonText) {
     const keyRegex = /"([^"\\]*(?:\\.[^"\\]*)*)"\s*:/g;
     const seen = new Set();
@@ -128,6 +140,62 @@ function assertCanonicalMirrorUrl(urlString) {
     }
 }
 
+async function fetchProofText(url, context) {
+    const label = context || "unknown";
+    debugLog("fetch.begin", {
+        context: label,
+        href: url
+    });
+
+    let resp;
+    try {
+        resp = await fetch(url, {
+            method: "GET",
+            cache: "no-store",
+            redirect: "follow"
+        });
+    } catch (e) {
+        debugLog("fetch.exception", {
+            context: label,
+            href: url,
+            name: e && e.name ? e.name : null,
+            message: e && e.message ? e.message : String(e)
+        });
+
+        throw {
+            code: CODES.NETWORK_FETCH_FAILED,
+            message: e && e.message ? e.message : String(e)
+        };
+    }
+
+    debugLog("fetch.response", {
+        context: label,
+        href: url,
+        status: resp.status,
+        ok: resp.ok,
+        redirected: resp.redirected,
+        final_url: resp.url || null,
+        type: resp.type || null
+    });
+
+    if (!resp.ok) {
+        throw {
+            code: resp.status === 404 ? CODES.PROOF_NOT_FOUND : CODES.NETWORK_FETCH_FAILED,
+            message: `HTTP ${resp.status}`
+        };
+    }
+
+    const text = await resp.text();
+
+    debugLog("fetch.text", {
+        context: label,
+        href: url,
+        length: text.length
+    });
+
+    return text;
+}
+
 /**
  * RESOLUTION MODULE
  */
@@ -144,12 +212,23 @@ class ResolutionModule {
             embedded = hash;
         }
 
-        return {
+        const parsed = {
             embedded_proof: embedded,
             proof_url: params.get("proof_url"),
             execution_id: params.get("id"),
             manual_proof: null
         };
+
+        debugLog("parse_inputs", {
+            href: window.location.href,
+            search: window.location.search,
+            hash: window.location.hash,
+            execution_id: parsed.execution_id,
+            proof_url: parsed.proof_url,
+            embedded_present: !!parsed.embedded_proof
+        });
+
+        return parsed;
     }
 
     static evaluatePrecedence(req) {
@@ -170,7 +249,8 @@ class ResolutionModule {
             parsed_proof: res.parsed_proof || null,
             error_class: res.error_class || null,
             error_detail: res.error_detail || null,
-            trace: [...window.__GUBAZ_TRACE__]
+            trace: [...window.__GUBAZ_TRACE__],
+            debug: [...window.__GUBAZ_DEBUG__]
         };
 
         if (normalized.status === "proof_resolved") {
@@ -251,15 +331,7 @@ class ResolutionModule {
                 return this.normalizeResult(fail);
             }
 
-            const resp = await fetch(url.href);
-            if (!resp.ok) {
-                throw {
-                    code: resp.status === 404 ? CODES.PROOF_NOT_FOUND : CODES.NETWORK_FETCH_FAILED,
-                    message: `HTTP ${resp.status}`
-                };
-            }
-
-            const json = await resp.text();
+            const json = await fetchProofText(url.href, "explicit_url");
             const parsed = strictParse(json);
 
             const ok = {
@@ -304,6 +376,12 @@ class ResolutionModule {
 
         const canonicalUrl = canonicalMirrorUrl(req.execution_id);
 
+        debugLog("resolve_execution_id.begin", {
+            execution_id: req.execution_id,
+            canonical_url: canonicalUrl,
+            user_agent: navigator.userAgent
+        });
+
         try {
             assertCanonicalMirrorUrl(canonicalUrl);
         } catch (e) {
@@ -329,25 +407,7 @@ class ResolutionModule {
         };
 
         try {
-            const resp = await fetch(canonicalUrl);
-
-            if (!resp.ok) {
-                entry.error_class = resp.status === 404 ? CODES.PROOF_NOT_FOUND : CODES.NETWORK_FETCH_FAILED;
-                logTrace(entry);
-
-                const fail = {
-                    status: "resolution_failed",
-                    source_tier: 2,
-                    source_descriptor: DESCRIPTORS.CANONICAL_MIRROR,
-                    source_origin: canonicalUrl,
-                    error_class: entry.error_class,
-                    error_detail: `HTTP ${resp.status}`
-                };
-                logTrace({ ...fail, outcome: "failed", selected_final: true });
-                return this.normalizeResult(fail);
-            }
-
-            const json = await resp.text();
+            const json = await fetchProofText(canonicalUrl, "execution_id");
             const parsed = strictParse(json);
 
             entry.outcome = "proof_resolved";
@@ -549,10 +609,20 @@ async function verifyProof(proof) {
  */
 async function boot() {
     resetHarnessState();
+    debugLog("boot.begin", {
+        href: window.location.href,
+        user_agent: navigator.userAgent
+    });
+
     if (typeof resetUI === "function") resetUI();
 
     const request = ResolutionModule.parseInputs();
     const tier = ResolutionModule.evaluatePrecedence(request);
+
+    debugLog("boot.precedence", {
+        tier,
+        request
+    });
 
     if (tier === -1) {
         if (typeof renderState === "function") renderState("idle");
@@ -567,6 +637,8 @@ async function boot() {
     else if (tier === 2) result = await ResolutionModule.resolveExecutionId(request);
     else if (tier === 3) result = await ResolutionModule.resolveManualImport(request);
 
+    debugLog("boot.resolution_result", result);
+
     if (!result) {
         window.__GUBAZ_RESULT__ = {
             status: "resolution_failed",
@@ -577,7 +649,8 @@ async function boot() {
             parsed_proof: null,
             error_class: CODES.INTERNAL_VERIFIER_ERROR,
             error_detail: "Resolution returned null",
-            trace: [...window.__GUBAZ_TRACE__]
+            trace: [...window.__GUBAZ_TRACE__],
+            debug: [...window.__GUBAZ_DEBUG__]
         };
         if (typeof renderResolutionFail === "function") renderResolutionFail(window.__GUBAZ_RESULT__);
         return;
@@ -598,7 +671,9 @@ async function boot() {
     if (typeof renderState === "function") renderState("proof_loaded", result);
 
     const verdict = await verifyProof(result.parsed_proof);
-    window.__GUBAZ_RESULT__ = { ...result, verification: verdict };
+    window.__GUBAZ_RESULT__ = { ...result, verification: verdict, debug: [...window.__GUBAZ_DEBUG__] };
+
+    debugLog("boot.verdict", verdict);
 
     if (window.location.search.includes("selftest=1")) {
         console.log("SELFTEST MODE");
@@ -628,6 +703,8 @@ async function boot() {
 
 window.resolveManual = async (json) => {
     resetHarnessState();
+    debugLog("manual.begin", { length: json ? json.length : 0 });
+
     const res = await ResolutionModule.resolveManualImport({ manual_proof: json });
 
     if (!res) {
@@ -640,7 +717,8 @@ window.resolveManual = async (json) => {
             parsed_proof: null,
             error_class: CODES.INTERNAL_VERIFIER_ERROR,
             error_detail: "Manual resolution returned null",
-            trace: [...window.__GUBAZ_TRACE__]
+            trace: [...window.__GUBAZ_TRACE__],
+            debug: [...window.__GUBAZ_DEBUG__]
         };
         if (typeof renderResolutionFail === "function") renderResolutionFail(window.__GUBAZ_RESULT__);
         return;
@@ -649,7 +727,7 @@ window.resolveManual = async (json) => {
     if (res.status === "proof_resolved") {
         if (typeof renderState === "function") renderState("proof_loaded", res);
         const verdict = await verifyProof(res.parsed_proof);
-        window.__GUBAZ_RESULT__ = { ...res, verification: verdict };
+        window.__GUBAZ_RESULT__ = { ...res, verification: verdict, debug: [...window.__GUBAZ_DEBUG__] };
 
         if (verdict.decision === "VALID") {
             if (typeof renderSuccess === "function") renderSuccess(verdict.proof, res);

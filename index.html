@@ -76,7 +76,7 @@
     </div>
 </main>
 
-<script src="verifier-browser.js?v=20260319c"></script>
+<script src="verifier-browser.js?v=20260320mobiledebug1"></script>
 <script>
 const ICONS = {
     IDLE: '<div class="w-6 h-6 rounded-full bg-zinc-700"></div>',
@@ -158,6 +158,10 @@ function renderResolutionFail(res) {
 
     if (res.source_tier !== null || res.source_descriptor !== null) {
         showSource(res);
+    }
+
+    if (res && res.debug) {
+        console.log("[GUBAZ_DEBUG_RESULT]", res.debug);
     }
 }
 
