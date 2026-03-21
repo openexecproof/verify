@@ -38,59 +38,40 @@
         if (cachedModule) return cachedModule;
         if (loadingPromise) return loadingPromise;
 
-        setState({ stage: "loading_module" });
+        setState({ stage: "loading_local_module" });
 
         loadingPromise = (async () => {
-            const candidates = [
-                "https://esm.sh/@noble/ed25519?bundle",
-                "https://esm.run/@noble/ed25519",
-                "https://cdn.jsdelivr.net/npm/@noble/ed25519/+esm"
-            ];
+            const url = "./vendor/noble-ed25519.bundle.mjs?v=20260321localvendor1";
 
-            let lastError = null;
+            try {
+                const mod = await import(url);
 
-            for (const url of candidates) {
-                try {
-                    setState({ stage: "trying_candidate", module_url: url });
-                    const mod = await import(url);
-
-                    if (!mod || typeof mod.verifyAsync !== "function") {
-                        throw new Error("Loaded module does not expose verifyAsync");
-                    }
-
-                    cachedModule = mod;
-                    setState({
-                        stage: "ready",
-                        loaded: true,
-                        module_url: url,
-                        hasVerifyAsync: true,
-                        last_error: null
-                    });
-
-                    return mod;
-                } catch (e) {
-                    const msg = errToString(e);
-                    lastError = e;
-                    STATE.attempts.push({ url, error: msg });
-                    setState({
-                        stage: "candidate_failed",
-                        last_error: msg
-                    });
-
-                    try {
-                        console.warn("[ED25519_FALLBACK] candidate failed:", url, msg);
-                    } catch (_ignore) {}
+                if (!mod || typeof mod.verifyAsync !== "function") {
+                    throw new Error("Local module does not expose verifyAsync");
                 }
+
+                cachedModule = mod;
+                setState({
+                    stage: "ready",
+                    loaded: true,
+                    module_url: url,
+                    hasVerifyAsync: true,
+                    last_error: null
+                });
+
+                return mod;
+            } catch (e) {
+                const msg = errToString(e);
+                STATE.attempts.push({ url, error: msg });
+                setState({
+                    stage: "load_failed",
+                    loaded: false,
+                    hasVerifyAsync: false,
+                    module_url: url,
+                    last_error: msg
+                });
+                throw e;
             }
-
-            setState({
-                stage: "load_failed",
-                loaded: false,
-                hasVerifyAsync: false,
-                last_error: errToString(lastError || new Error("Unable to load @noble/ed25519 from CDN"))
-            });
-
-            throw lastError || new Error("Unable to load @noble/ed25519 from CDN");
         })();
 
         return loadingPromise;
