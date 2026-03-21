@@ -1,0 +1,25 @@
+﻿{
+  "execution_core": {
+    "protocol_version": "oep-1",
+    "command": [
+      "git",
+      "-C",
+      "D:\\oep-verify",
+      "rev-parse",
+      "HEAD"
+    ],
+    "stdout_hash": "c9a01a11af6ed7c15a543a31dcfbac25567dc8a2184007d544b421d1cf3e996f",
+    "stderr_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "exit_code": 0,
+    "env_fingerprint": "c1b12b28809dccf8d6e4c2186ac931cb56df444d4ca023c511b1490fcb92553e",
+    "issued_at": "2026-03-20T04:47:31Z"
+  },
+  "execution_id": "32ed4478b43f6a695803ad1beca45640383b59cf2e639debf31884bc4265194c",
+  "signer": {
+    "key_id": "10fd541d9263aef4",
+    "pubkey": "aUT-w-y3MOgmeh56nlsU6gUKRWyuwa4nIH2lG2Q3OGI",
+    "alg": "Ed25519"
+  },
+  "signature": "rpJ__uuiDrVOkCCun0PBLZK-FBzozcuVuYW9DVfjMkGeUkxHUqNezzyQrilYaAoPWdr55msyD8_7VtjKqGuoAA",
+  "proof_class": "portable"
+}
