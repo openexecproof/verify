@@ -580,24 +580,68 @@ async function verifyProof(proof) {
     }
 
     try {
+        if (
+            !window.crypto ||
+            !window.crypto.subtle ||
+            typeof window.crypto.subtle.importKey !== "function" ||
+            typeof window.crypto.subtle.verify !== "function"
+        ) {
+            return {
+                decision: "INVALID",
+                failure_class: CODES.INTERNAL_VERIFIER_ERROR,
+                message: "WebCrypto unavailable in this browser"
+            };
+        }
+
         const pub = b64urlToBytes(proof.signer.pubkey);
         const sig = b64urlToBytes(proof.signature);
-        const key = await crypto.subtle.importKey("raw", pub, { name: "Ed25519" }, false, ["verify"]);
         const scopeBytes = new TextEncoder().encode(recomputedId);
-        const ok = await crypto.subtle.verify({ name: "Ed25519" }, key, sig, scopeBytes);
+
+        let key;
+        try {
+            key = await crypto.subtle.importKey(
+                "raw",
+                pub,
+                { name: "Ed25519" },
+                false,
+                ["verify"]
+            );
+        } catch (e) {
+            return {
+                decision: "INVALID",
+                failure_class: CODES.INTERNAL_VERIFIER_ERROR,
+                message: "Ed25519 importKey unsupported or failed: " + (e.message || String(e))
+            };
+        }
+
+        let ok;
+        try {
+            ok = await crypto.subtle.verify(
+                { name: "Ed25519" },
+                key,
+                sig,
+                scopeBytes
+            );
+        } catch (e) {
+            return {
+                decision: "INVALID",
+                failure_class: CODES.INTERNAL_VERIFIER_ERROR,
+                message: "Ed25519 verify unsupported or failed: " + (e.message || String(e))
+            };
+        }
 
         if (!ok) {
             return {
                 decision: "INVALID",
                 failure_class: CODES.SIGNATURE_INVALID,
-                message: "Cryptographic verify failed"
+                message: "Cryptographic verify returned false"
             };
         }
-    } catch (_e) {
+    } catch (e) {
         return {
             decision: "INVALID",
-            failure_class: CODES.SIGNATURE_INVALID,
-            message: "Signature verification failed"
+            failure_class: CODES.INTERNAL_VERIFIER_ERROR,
+            message: "Unexpected verification environment failure: " + (e.message || String(e))
         };
     }
 
